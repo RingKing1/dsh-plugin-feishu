@@ -129,6 +129,10 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
   保存后插件**自动断开重连**，不用重启 dsh。
 - 卡片里的「恢复继承值」会清掉当前条目的用户覆盖层，重新继承 profile / 包内默认值。
 - `appSecret` 带 role('secret')：保存后不会被回显，只能覆盖。
+- **连接状态是真的，不是「配置存在就点亮」**：宿主把每台机器人的长连接状态经
+  `GET /api/feishu.status` 报给界面（`missing / connecting / online / reconnecting / error / stopped`）。
+  侧栏图标右下角：绿=已连接、黄=连接中/重连中、红=连接失败；机器人列表里每行也有状态点，
+  鼠标悬停能看到失败原因（比如 App Secret 不对）。
 - 表单里没有的项（比如想用环境变量）保持默认即可。
 
 **B. 环境变量（密钥不落地）**
