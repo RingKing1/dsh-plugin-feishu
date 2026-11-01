@@ -94,9 +94,14 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 
 **A. 插件页直接改（推荐，改完即时生效）**
 
-侧栏 **插件** → 选中 **dsh-plugin-feishu** → 「配置」里填 `appId` / `appSecret` 等字段 → 保存。
+侧栏 **插件** → 选中 **dsh-plugin-feishu** → 「飞书 / Lark 连接」卡片里填 `appId` / `appSecret` 等字段 → 保存。
 
-- 所有字段都声明为 volatile，Host 才会为这个条目开配置命名空间、插件页才会渲染表单；保存后插件**自动断开重连**，不用重启 dsh。
+- dsh 0.2 起，插件页的配置区不会自动渲染，必须由插件自己的**浏览器半侧**注册到 keyed slot
+  `plugins.bundle.config`（键 = 包名）。本插件从 0.1.2 起自带 `lib/client.js` 提供这张卡片；
+  只有宿主半侧、没有客户端半侧的插件，即使字段是 volatile 也不会出现配置界面。
+- 所有字段都声明为 volatile，Host 才会为这个条目开配置命名空间（`feishu`），表单写入才允许；
+  保存后插件**自动断开重连**，不用重启 dsh。
+- 卡片里的「恢复继承值」会清掉当前条目的用户覆盖层，重新继承 profile / 包内默认值。
 - `appSecret` 带 role('secret')：保存后不会被回显，只能覆盖。
 - 表单里没有的项（比如想用环境变量）保持默认即可。
 

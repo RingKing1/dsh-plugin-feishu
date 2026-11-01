@@ -1,11 +1,12 @@
 {
   "name": "dsh-plugin-feishu",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DSH（DeepSeek Harness）插件：把 dsh 会话接进飞书 / Lark 长连接，卡片流式回复",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -18,6 +19,12 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   },
   "engines": {
