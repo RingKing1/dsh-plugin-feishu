@@ -109,3 +109,10 @@ test('没有会话可参考时退回进程 cwd', async () => {
   const { pool } = makePool({ provider: 'p', model: 'm' }, { workdir: '' })
   assert.equal(await pool.resolveCwd(undefined), process.cwd())
 })
+test('老映射里记着进程 cwd 时按未设置处理，重新推断工作区', async () => {
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    workdir: '',
+    sessions: [{ header: { id: 'session-human', cwd: '/work/project', createdAt: 10 } }],
+  })
+  assert.equal(await pool.resolveCwd(process.cwd()), '/work/project')
+})
