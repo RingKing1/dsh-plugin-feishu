@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "title": {
+    "en": "suveng DSH plugins",
+    "zh": "suveng 的 DSH 插件"
+  },
+  "description": {
+    "en": "Plugins for DeepSeek Harness (DSH)",
+    "zh": "DeepSeek Harness（DSH）插件合集"
+  },
+  "metadata": {
+    "categories": {},
+    "labels": {},
+    "sortKeys": {}
+  },
+  "plugins": [
+    {
+      "name": "dsh-plugin-feishu",
+      "title": {
+        "en": "Feishu / Lark bridge",
+        "zh": "飞书桥接"
+      },
+      "description": {
+        "en": "Drive a DSH session from Feishu: long-connection events in, streaming cards out.",
+        "zh": "用飞书驱动 DSH 会话：长连接收消息，流式卡片回写。"
+      },
+      "icon": "icons/feishu.svg",
+      "author": "suveng",
+      "homepage": "https://github.com/suveng/dsh-plugin-feishu#readme",
+      "repository": {
+        "url": "https://github.com/suveng/dsh-plugin-feishu"
+      },
+      "metadata": {
+        "keywords": [
+          "feishu",
+          "lark",
+          "bridge",
+          "bot",
+          "chat"
+        ],
+        "labels": [],
+        "sortKeys": {}
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1793528925,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/suveng/dsh-plugin-feishu",
+            "commit": "e92c0f6a494b773c3c28f8d24d7d95b81a021b79"
+          },
+          "engines": {
+            "dsh": ">=0.2.1-rc.2 <0.3.0"
+          }
+        }
+      ]
+    }
+  ]
+}

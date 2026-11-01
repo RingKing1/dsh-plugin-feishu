@@ -77,6 +77,17 @@ dsh plugin --profile web add dsh-plugin-feishu
 插件包自带 `cordis.patch.yml`（`dsh.bundle.patch`），安装后会在基础 bundle 之上插入一个 id 为 `feishu` 的插件行，
 默认是**休眠状态**（没有凭证只打一条 warn，不影响 `dsh --dump-config` 和别的插件）。
 
+## 插件市场（可选）
+
+本仓自带一份格式 1 的插件索引，可直接添加为 dsh 的索引源（插件页 → 实验性插件 → 打开「自定义插件索引」→ 发现 → 添加索引源）：
+
+~~~text
+https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.json
+~~~
+
+> DSH 不内置任何索引源，也不做集中收录：索引由发布者自己托管，谁信任谁添加。
+> 索引里的 Git 版本按提交号钉死（git+https://…git#<commit>），装到的就是那一版。
+
 ## 三、配置
 
 两种方式，任选其一：
