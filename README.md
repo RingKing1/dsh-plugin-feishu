@@ -167,6 +167,11 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
 | `debug` | `false` | 输出调试日志（含去重、忽略原因） |
 
+飞书里新建的会话用的是 **profile 的默认模型**（`agent-default-model` 条目的 `provider`/`model`，
+DSH 里选过一次模型就会记在这里）。dsh 0.2 起新 agent 必须带模型选择，插件在 `create` / `resume`
+时都会把它作为 `agentOptions` 传进去；没有默认模型时会话仍然建得起来，但第一次发言会报
+`has no provider/model` —— 那种情况先在 dsh 界面里选一次模型即可。
+
 ## 四、启动与验证
 
 ```bash
