@@ -160,6 +160,7 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `appId` / `appSecret` | 空 | 飞书自建应用凭证；为空时读环境变量，仍为空则插件休眠 |
 | `domain` | `https://open.feishu.cn` | 国际版 Lark 用 `https://open.larksuite.com` |
 | `workdir` | 自动（最近一次 dsh 会话的工作区） | 飞书会话建在哪个工作区：留空 = 跟随你最近干活的目录；显式填写则固定用它。**不回落进程 cwd** —— 那样飞书会话会归到桌面壳的安装目录 |
+| `agentPreset` | dsh 默认预设（本机为 `ptc`） | 飞书会话用哪个 agent 预设。预设决定挂哪些工具（standard / ptc / minimal / cordis）——不挂预设就只有基础工具，没有 read/write/bash/web |
 | `allowedOpenIds` | `[]` | 允许使用的 open_id 列表；空表示不限制 |
 | `requireMentionInGroup` | `true` | 群聊是否必须 @ 机器人才响应 |
 | `streamIntervalMs` | `700` | 卡片流式刷新间隔（毫秒），飞书侧限频，不建议低于 200 |
@@ -171,6 +172,10 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 DSH 里选过一次模型就会记在这里）。dsh 0.2 起新 agent 必须带模型选择，插件在 `create` / `resume`
 时都会把它作为 `agentOptions` 传进去；没有默认模型时会话仍然建得起来，但第一次发言会报
 `has no provider/model` —— 那种情况先在 dsh 界面里选一次模型即可。
+
+飞书会话默认挂在 **dsh 的默认 agent 预设**上（与网页端新建会话一致）。插件建会话时会自己
+`presets.resolve()` 并在 setup 回调里 `presets.mount()`，否则会话只有基础工具、连读文件都做不到；
+恢复老会话时沿用日志里记录的预设，不会悄悄换一套工具。
 
 飞书会话在 dsh 侧栏的位置：按工作目录归组。dsh 网页端新建会话时会显式把会话挂到工作区
 （`workspace.attachSession`），插件建的会话也要补这一步，否则会一直挂在「未分组」。

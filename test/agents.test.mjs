@@ -7,9 +7,13 @@ function makePool(selection, options = {}) {
   const calls = []
   const ctx = {
     get(name) {
-      if (name === 'sessionQuery' && options.sessions !== undefined) {
-        return { async listSessions() { return options.sessions } }
+      if (name === 'sessionQuery' && (options.sessions !== undefined || options.observation !== undefined)) {
+        return {
+          async listSessions() { return options.sessions || [] },
+          async observeSession() { return options.observation },
+        }
       }
+      if (name === 'agentPresets' && options.presets !== undefined) return options.presets
       if (name === 'workspaceRegistry' && options.workspaces !== undefined) {
         return { list: () => options.workspaces }
       }
@@ -38,7 +42,7 @@ function makePool(selection, options = {}) {
   }
   const pool = new AgentPool({
     ctx,
-    config: { workdir: options.workdir ?? '/tmp' },
+    config: { workdir: options.workdir ?? '/tmp', agentPreset: '', ...(options.config || {}) },
     store,
     log: { info() {}, warn() {}, debug() {}, error() {} },
   })
@@ -162,4 +166,66 @@ test('归组失败只记日志，不打断消息收发', async () => {
     }],
   })
   await pool.attachWorkspace('session-x', '/tmp')
+})
+test('新建会话时按默认预设挂工具：meta 带 agentPreset，setup 会 mount', async () => {
+  const mounted = []
+  const presets = {
+    async resolve(id) { return { id: id === undefined ? 'ptc' : id } },
+    async mount(agentCtx, id) { mounted.push([agentCtx, id]) },
+  }
+  const { pool, calls } = makePool(undefined, { presets, workdir: '/tmp' })
+  await pool.resolve('chat-preset')
+  const create = calls.find(([kind]) => kind === 'create')
+  assert.equal(create[1].meta.agentPreset, 'ptc')
+  assert.equal(typeof create[1].setup, 'function')
+  await create[1].setup({ scoped: true })
+  assert.deepEqual(mounted, [[{ scoped: true }, 'ptc']])
+})
+
+test('配置里的 agentPreset 优先于默认预设', async () => {
+  const presets = {
+    calls: [],
+    async resolve(id) { this.calls.push(id); return { id } },
+    async mount() {},
+  }
+  const { pool, calls } = makePool(undefined, { presets, workdir: '/tmp', config: { agentPreset: 'standard' } })
+  await pool.resolve('chat-preset-2')
+  assert.deepEqual(presets.calls, ['standard'])
+  assert.equal(calls.find(([kind]) => kind === 'create')[1].meta.agentPreset, 'standard')
+})
+
+test('恢复会话时沿用日志里记录的预设，并释放观测句柄', async () => {
+  let disposed = false
+  const mounted = []
+  const presets = {
+    async resolve(id) { return { id: id === undefined ? 'ptc' : id } },
+    async mount(agentCtx, id) { mounted.push(id) },
+  }
+  const observation = {
+    events: [
+      { type: 'turn/start' },
+      { type: 'agent-preset/selected', data: { agentPreset: 'minimal' } },
+    ],
+    [Symbol.dispose]() { disposed = true },
+  }
+  const { pool, calls } = makePool(undefined, {
+    presets,
+    observation,
+    workdir: '/tmp',
+    saved: { sessionId: 'session-old', cwd: '/tmp' },
+  })
+  await pool.resolve('chat-preset-3')
+  const resume = calls.find(([kind]) => kind === 'resume')
+  assert.equal(typeof resume[1].setup, 'function')
+  await resume[1].setup({})
+  assert.deepEqual(mounted, ['minimal'])
+  assert.equal(disposed, true)
+})
+
+test('没有 agentPresets 服务时照旧创建（不传 setup / 不写预设）', async () => {
+  const { pool, calls } = makePool(undefined, { workdir: '/tmp' })
+  await pool.resolve('chat-preset-4')
+  const create = calls.find(([kind]) => kind === 'create')
+  assert.equal(create[1].setup, undefined)
+  assert.equal(create[1].meta.agentPreset, undefined)
 })
