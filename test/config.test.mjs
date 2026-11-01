@@ -55,7 +55,11 @@ test('默认值：域名、群聊必须 @、节流间隔、截断上限', () => 
   assert.equal(config.maxReplyChars, 8000)
   assert.deepEqual(config.allowedOpenIds, [])
   assert.ok(config.statePath.endsWith('state.json'))
-  assert.ok(config.workdir.length > 0)
+  // workdir 留空表示「自动」：由 AgentPool 取最近一次会话的工作区，
+  // 回落 process.cwd() 会让飞书会话归到桌面壳的安装目录
+  assert.equal(config.workdir, '')
+  const explicit = resolveConfig({ appId: 'a', appSecret: 'b', workdir: '/tmp/x' }, {})
+  assert.equal(explicit.workdir, '/tmp/x')
 })
 
 test('数值越界被夹到合法区间', () => {

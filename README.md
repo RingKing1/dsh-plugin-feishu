@@ -159,7 +159,7 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | --- | --- | --- |
 | `appId` / `appSecret` | 空 | 飞书自建应用凭证；为空时读环境变量，仍为空则插件休眠 |
 | `domain` | `https://open.feishu.cn` | 国际版 Lark 用 `https://open.larksuite.com` |
-| `workdir` | DSH 进程当前目录 | 新建会话的工作目录 |
+| `workdir` | 自动（最近一次 dsh 会话的工作区） | 飞书会话建在哪个工作区：留空 = 跟随你最近干活的目录；显式填写则固定用它。**不回落进程 cwd** —— 那样飞书会话会归到桌面壳的安装目录 |
 | `allowedOpenIds` | `[]` | 允许使用的 open_id 列表；空表示不限制 |
 | `requireMentionInGroup` | `true` | 群聊是否必须 @ 机器人才响应 |
 | `streamIntervalMs` | `700` | 卡片流式刷新间隔（毫秒），飞书侧限频，不建议低于 200 |

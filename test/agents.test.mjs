@@ -7,6 +7,9 @@ function makePool(selection, options = {}) {
   const calls = []
   const ctx = {
     get(name) {
+      if (name === 'sessionQuery' && options.sessions !== undefined) {
+        return { async listSessions() { return options.sessions } }
+      }
       if (name === 'agentDefaultModel') {
         if (selection === 'throw') return { currentSelection() { throw new Error('boom') } }
         if (selection === undefined) return undefined
@@ -26,12 +29,13 @@ function makePool(selection, options = {}) {
     },
   }
   const store = {
+    sessions: new Map(options.ownSessions || []),
     get: () => options.saved,
     set: async () => {},
   }
   const pool = new AgentPool({
     ctx,
-    config: { workdir: '/tmp' },
+    config: { workdir: options.workdir ?? '/tmp' },
     store,
     log: { info() {}, warn() {}, debug() {}, error() {} },
   })
@@ -64,4 +68,44 @@ test('没有默认模型服务 / 选择为空 / 读取抛错时不塞空值', ()
     const { pool } = makePool(selection)
     assert.equal(pool.defaultAgentOptions(), undefined)
   }
+})
+test('工作目录：显式配置优先，其次用这个 chat 上次的目录', async () => {
+  const explicit = makePool({ provider: 'p', model: 'm' }, {
+    workdir: '/work/explicit',
+    saved: { sessionId: 'session-x', cwd: '/work/saved' },
+  })
+  await explicit.pool.resolve('chat-1')
+  await explicit.pool.resolve('chat-2')
+  assert.equal(explicit.pool.config.workdir, '/work/explicit')
+
+  const { pool } = makePool({ provider: 'p', model: 'm' }, { workdir: '', saved: { sessionId: 'session-x', cwd: '/work/saved' } })
+  assert.equal(await pool.resolveCwd('/work/saved'), '/work/saved')
+})
+
+test('工作目录没配时跟最近一次 dsh 会话的工作区（而不是桌面壳的安装目录）', async () => {
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    workdir: '',
+    sessions: [
+      { header: { id: 'session-old', cwd: '/work/old', createdAt: 1 } },
+      { header: { id: 'session-new', cwd: '/work/new', createdAt: 99 } },
+    ],
+  })
+  assert.equal(await pool.resolveCwd(undefined), '/work/new')
+})
+
+test('推断工作区时排除飞书自己建的会话，避免自我强化', async () => {
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    workdir: '',
+    ownSessions: [['chat-1', { sessionId: 'session-own', cwd: '/work/desktop-shell', updatedAt: 1 }]],
+    sessions: [
+      { header: { id: 'session-own', cwd: '/work/desktop-shell', createdAt: 100 } },
+      { header: { id: 'session-human', cwd: '/work/project', createdAt: 50 } },
+    ],
+  })
+  assert.equal(await pool.resolveCwd(undefined), '/work/project')
+})
+
+test('没有会话可参考时退回进程 cwd', async () => {
+  const { pool } = makePool({ provider: 'p', model: 'm' }, { workdir: '' })
+  assert.equal(await pool.resolveCwd(undefined), process.cwd())
 })
