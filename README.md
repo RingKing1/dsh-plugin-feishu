@@ -92,9 +92,20 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 
 三种方式，任选其一（优先级：界面 / 配置文件 > 环境变量）。
 
-**A0. 扫码创建应用（最省事，推荐）**
+> 界面配色全部取 dsh 主题 token（`--dsw-alias-*`），浅色/深色主题自动跟随。
+> 主按钮用的是 `--dsw-alias-button-primary-fill` + `--dsw-alias-label-primary-foreground` 这一对 ——
+> 不能拿 `--dsw-alias-brand-primary` 当按钮底色：它在深色主题里是近白色，配白字会看不见。
 
-侧边栏 **飞书** → 「扫码创建应用」→ 用飞书 / Lark 扫码确认 → 应用自动创建好，App ID / App Secret 自动填入并保存，插件立刻用它连上。
+**A0. 扫码添加机器人（最省事，推荐）**
+
+侧边栏 **飞书** → 「扫码创建应用」→ 用飞书 / Lark 扫码确认 → 应用自动创建好、作为**一台机器人**加进列表，插件立刻用它连上。
+
+**一个工作区可以绑多台飞书机器人**（多个应用，每台一条长连接、互不影响）：
+
+- 再扫一次二维码，或在「已绑定的机器人」里点**手动添加**填 App ID / App Secret，就多一台；
+- 每台可以改展示名、随时移除（移除即断开那条连接），它们共用工作目录与卡片设置；
+- 多台时每台各自落一份会话映射（`state-<appId>.json`），不会串会话；
+- 配置形状是 `bots: { "cli_xxx": { name, appSecret } }` —— 键就是 App ID，删除/改名都落在稳定的键路径上。
 
 - 底层是飞书 Node SDK 的 `registerApp`（OAuth 2.0 Device Authorization Grant / RFC 8628）：
   宿主调 SDK 拿到验证链接、渲染成二维码，浏览器轮询 `/api/feishu.register` 取状态。
@@ -103,7 +114,7 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 - 不需要开发者后台点一圈，也不需要公网回调地址（长连接模式）。
 - 二维码与凭证都只在本机同源、已登录的浏览器里流转；凭证同样经 `configForms` 写入 profile。
 
-**A. 手动填凭证（改完即时生效）**
+**A. 旧版单机器人写法（仍在用，兼容）**
 
 两个入口，同一张表单：
 
