@@ -90,11 +90,15 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 
 ## 三、配置
 
-三种方式，任选其一（优先级：插件页 / 配置文件 > 环境变量）。
+三种方式，任选其一（优先级：界面 / 配置文件 > 环境变量）。
 
-**A. 插件页直接改（推荐，改完即时生效）**
+**A. 界面里直接改（推荐，改完即时生效）**
 
-侧栏 **插件** → 选中 **dsh-plugin-feishu** → 「飞书 / Lark 连接」卡片里填 `appId` / `appSecret` 等字段 → 保存。
+两个入口，同一张表单：
+
+- **侧边栏（推荐）**：左侧图标栏的**飞书**图标 → 主区域打开「飞书 / Lark」→ 填 `appId` / `appSecret` 等字段 → 保存。
+  和记忆系统（dsh-mnemon）一样走 `sidebar.panellist` + `main` 槽位，不用每次钻到插件详情页。
+- **插件页**：侧栏 **插件** → 选中 **dsh-plugin-feishu** → 「飞书 / Lark 连接」卡片。
 
 - dsh 0.2 起，插件页的配置区不会自动渲染，必须由插件自己的**浏览器半侧**注册到 keyed slot
   `plugins.bundle.config`（键 = 包名）。本插件从 0.1.2 起自带 `lib/client.js` 提供这张卡片；

@@ -50,26 +50,42 @@ test('客户端模块用 lazy-CJS factory 注册，id 为包名', () => {
   assert.deepEqual(Array.from(mod.inject), ['slots'])
 })
 
-test('配置卡注册进 plugins.bundle.config，键为包名，并带上 feishu 表单句柄', () => {
+test('同时注册插件页配置卡、侧栏入口与主面板，并都带上 feishu 表单句柄', () => {
   const mod = loadClient()
   const registrations = []
   const form = { marker: 'form' }
   const ctx = {
     slots: {
-      inject: (name, fn) => fn(),
+      inject: (_name, fn) => fn(),
       register: (options, component) => { registrations.push({ options, component }); return () => {} },
     },
     inject: (names, fn) => {
       assert.deepEqual(Array.from(names), ['configForms'])
-      return fn({ configForms: { get: (id) => { assert.equal(id, 'feishu'); return form }, whileServed: (ids, fn2) => { assert.deepEqual(Array.from(ids), ['feishu']); return fn2() } }, effect: (fn3) => fn3() })
+      return fn({
+        configForms: {
+          get: (id) => { assert.equal(id, 'feishu'); return form },
+          whileServed: (ids, fn2) => { assert.deepEqual(Array.from(ids), ['feishu']); return fn2() },
+        },
+        effect: (fn3) => fn3(),
+      })
     },
   }
   mod.apply(ctx)
-  assert.equal(registrations.length, 1)
-  assert.equal(registrations[0].options.name, 'plugins.bundle.config')
-  assert.equal(registrations[0].options.key, 'dsh-plugin-feishu')
-  const injected = registrations[0].options.inject()
-  assert.equal(injected.feishuForm, form)
+
+  const byName = new Map(registrations.map((row) => [row.options.name, row.options]))
+  assert.deepEqual([...byName.keys()].sort(), ['main', 'plugins.bundle.config', 'sidebar.panellist'])
+
+  // 插件详情页的配置卡：键 = 包名
+  assert.equal(byName.get('plugins.bundle.config').key, 'dsh-plugin-feishu')
+  // 侧栏入口与主面板必须共用同一个 id，Sidebar 才会把点击指向这个面板
+  assert.equal(byName.get('main').key, 'feishu')
+  assert.equal(byName.get('sidebar.panellist').id, 'feishu')
+  assert.equal(byName.get('sidebar.panellist').order, 32)
+  assert.equal(byName.get('sidebar.panellist').label(), '飞书')
+
+  for (const name of ['main', 'plugins.bundle.config']) {
+    assert.equal(byName.get(name).inject().feishuForm, form)
+  }
 })
 
 test('缺少 slots 或 configForms 时静默降级，不抛异常', () => {
