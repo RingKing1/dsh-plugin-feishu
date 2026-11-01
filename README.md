@@ -92,7 +92,18 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 
 三种方式，任选其一（优先级：界面 / 配置文件 > 环境变量）。
 
-**A. 界面里直接改（推荐，改完即时生效）**
+**A0. 扫码创建应用（最省事，推荐）**
+
+侧边栏 **飞书** → 「扫码创建应用」→ 用飞书 / Lark 扫码确认 → 应用自动创建好，App ID / App Secret 自动填入并保存，插件立刻用它连上。
+
+- 底层是飞书 Node SDK 的 `registerApp`（OAuth 2.0 Device Authorization Grant / RFC 8628）：
+  宿主调 SDK 拿到验证链接、渲染成二维码，浏览器轮询 `/api/feishu.register` 取状态。
+- 创建时会在平台默认模板上**增量预填**收消息、发消息、更新卡片所需的最小权限，
+  以及 `im.message.receive_v1` 事件；用户确认页里仍可自己增删。
+- 不需要开发者后台点一圈，也不需要公网回调地址（长连接模式）。
+- 二维码与凭证都只在本机同源、已登录的浏览器里流转；凭证同样经 `configForms` 写入 profile。
+
+**A. 手动填凭证（改完即时生效）**
 
 两个入口，同一张表单：
 
