@@ -43,6 +43,18 @@
       },
       "versions": [
         {
+          "version": "0.3.2",
+          "publishTimestamp": 1793536094,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/suveng/dsh-plugin-feishu",
+            "commit": "a2ca40b4fee1896b781696c43c54afc3d901af1c"
+          },
+          "engines": {
+            "dsh": ">=0.2.1-rc.2 <0.3.0"
+          }
+        },
+        {
           "version": "0.3.1",
           "publishTimestamp": 1793535701,
           "source": {
