@@ -90,16 +90,24 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 
 ## 三、配置
 
-两种方式，任选其一：
+三种方式，任选其一（优先级：插件页 / 配置文件 > 环境变量）。
 
-**A. 环境变量（推荐，密钥不落地）**
+**A. 插件页直接改（推荐，改完即时生效）**
+
+侧栏 **插件** → 选中 **dsh-plugin-feishu** → 「配置」里填 `appId` / `appSecret` 等字段 → 保存。
+
+- 所有字段都声明为 volatile，Host 才会为这个条目开配置命名空间、插件页才会渲染表单；保存后插件**自动断开重连**，不用重启 dsh。
+- `appSecret` 带 role('secret')：保存后不会被回显，只能覆盖。
+- 表单里没有的项（比如想用环境变量）保持默认即可。
+
+**B. 环境变量（密钥不落地）**
 
 ```bash
 export DSH_FEISHU_APP_ID=cli_xxxxxxxxxxxx
 export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 ```
 
-**B. 写进配置**（profile 的 cordis 配置文件里 `feishu` 这一行的 `config`）：
+**C. 写进配置文件**（profile 的 cordis 配置文件里 `feishu` 这一行的 `config`，改完要重启 dsh）：
 
 ```yaml
 - id: feishu

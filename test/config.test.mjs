@@ -1,6 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DEFAULT_DOMAIN, describeConfig, resolveConfig } from '../lib/config.js'
+import { DEFAULT_DOMAIN, describeConfig, readField, resolveConfig } from '../lib/config.js'
+
+test('readField 同时支持 volatile 引用与普通值', () => {
+  // 插件页保存后字段是 Volatile 引用
+  assert.equal(readField({ get: () => 'from-volatile' }, 'fallback'), 'from-volatile')
+  // 单测与旧入口直接传值
+  assert.equal(readField('plain', 'fallback'), 'plain')
+  // 空值回落，但 0 / false / '' 这类合法值不能被当成空
+  assert.equal(readField(undefined, 'fallback'), 'fallback')
+  assert.equal(readField(null, 'fallback'), 'fallback')
+  assert.equal(readField(0, 700), 0)
+  assert.equal(readField(false, true), false)
+  assert.equal(readField('', 'x'), '')
+  // get() 返回 undefined 时同样回落
+  assert.equal(readField({ get: () => undefined }, 'fallback'), 'fallback')
+})
 
 test('缺凭证时 enabled=false 并列出缺项', () => {
   const config = resolveConfig({}, {})
