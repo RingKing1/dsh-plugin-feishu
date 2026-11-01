@@ -161,6 +161,7 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `domain` | `https://open.feishu.cn` | 国际版 Lark 用 `https://open.larksuite.com` |
 | `workdir` | 自动（最近一次 dsh 会话的工作区） | 飞书会话建在哪个工作区：留空 = 跟随你最近干活的目录；显式填写则固定用它。**不回落进程 cwd** —— 那样飞书会话会归到桌面壳的安装目录 |
 | `agentPreset` | dsh 默认预设（本机为 `ptc`） | 飞书会话用哪个 agent 预设。预设决定挂哪些工具（standard / ptc / minimal / cordis）——不挂预设就只有基础工具，没有 read/write/bash/web |
+| `permissionPreset` | 空（跟随 dsh 默认 = `workspace-write` + 逐次审批） | 飞书会话的权限预设：填 `danger-full-access` 关闭沙箱与审批，其它内置预设 `workspace-write` / `read-only` 同理。只改本插件建的会话，不动全局默认；建会话和恢复会话时各切一次，所以**改了配置下一轮对话就生效** |
 | `allowedOpenIds` | `[]` | 允许使用的 open_id 列表；空表示不限制 |
 | `requireMentionInGroup` | `true` | 群聊是否必须 @ 机器人才响应 |
 | `streamIntervalMs` | `700` | 卡片流式刷新间隔（毫秒），飞书侧限频，不建议低于 200 |

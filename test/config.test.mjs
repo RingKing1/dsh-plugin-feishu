@@ -60,6 +60,9 @@ test('默认值：域名、群聊必须 @、节流间隔、截断上限', () => 
   assert.equal(config.workdir, '')
   const explicit = resolveConfig({ appId: 'a', appSecret: 'b', workdir: '/tmp/x' }, {})
   assert.equal(explicit.workdir, '/tmp/x')
+  // 权限预设留空 = 跟随 dsh 默认；填了才切（去空格）
+  assert.equal(config.permissionPreset, '')
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', permissionPreset: ' danger-full-access ' }, {}).permissionPreset, 'danger-full-access')
 })
 
 test('数值越界被夹到合法区间', () => {

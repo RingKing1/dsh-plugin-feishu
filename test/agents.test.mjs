@@ -17,6 +17,7 @@ function makePool(selection, options = {}) {
       if (name === 'workspaceRegistry' && options.workspaces !== undefined) {
         return { list: () => options.workspaces }
       }
+      if (name === 'permissionPresets' && options.permissionPresets !== undefined) return options.permissionPresets
       if (name === 'agentDefaultModel') {
         if (selection === 'throw') return { currentSelection() { throw new Error('boom') } }
         if (selection === undefined) return undefined
@@ -27,11 +28,11 @@ function makePool(selection, options = {}) {
     agents: {
       async create(input) {
         calls.push(['create', input])
-        return { agent: { ctx: { on: () => () => {} } } }
+        return { agent: { ctx: { on: () => () => {} }, session: options.session || { id: input.sessionId } } }
       },
       async resume(input) {
         calls.push(['resume', input])
-        return { agent: { ctx: { on: () => () => {} } } }
+        return { agent: { ctx: { on: () => () => {} }, session: options.session || { id: input.resumeSessionId } } }
       },
     },
   }
@@ -167,6 +168,53 @@ test('归组失败只记日志，不打断消息收发', async () => {
   })
   await pool.attachWorkspace('session-x', '/tmp')
 })
+test('配了 permissionPreset 时给新建会话切权限（关闭沙箱）', async () => {
+  const set = []
+  const service = { set(session, name) { set.push([session, name]) } }
+  const session = { id: 'session-perm' }
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    session,
+    config: { permissionPreset: 'danger-full-access' },
+    permissionPresets: service,
+  })
+  await pool.resolve('chat-perm')
+  assert.deepEqual(set, [[session, 'danger-full-access']])
+})
+
+test('没配 permissionPreset 时完全不动权限服务（跟随 dsh 默认）', async () => {
+  const set = []
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    permissionPresets: { set(session, name) { set.push([session, name]) } },
+  })
+  await pool.resolve('chat-default')
+  assert.deepEqual(set, [])
+})
+
+test('恢复已有会话也按配置切权限：改了配置下一轮就生效', async () => {
+  const set = []
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    saved: { sessionId: 'session-old', cwd: '/tmp' },
+    config: { permissionPreset: 'danger-full-access' },
+    permissionPresets: { set(session, name) { set.push([session, name]) } },
+  })
+  await pool.resolve('chat-old')
+  assert.equal(set.length, 1)
+  assert.equal(set[0][1], 'danger-full-access')
+})
+
+test('权限服务缺失或 set 抛错时不打断收发消息', async () => {
+  // 没有服务：只记日志
+  const { pool: noService } = makePool({ provider: 'p', model: 'm' }, { config: { permissionPreset: 'danger-full-access' } })
+  assert.ok(await noService.resolve('chat-a'))
+
+  // 预设名非法等异常也不往外抛
+  const { pool: throwing } = makePool({ provider: 'p', model: 'm' }, {
+    config: { permissionPreset: 'no-such-preset' },
+    permissionPresets: { set() { throw new Error('unknown preset') } },
+  })
+  assert.ok(await throwing.resolve('chat-b'))
+})
+
 test('新建会话时按默认预设挂工具：meta 带 agentPreset，setup 会 mount', async () => {
   const mounted = []
   const presets = {

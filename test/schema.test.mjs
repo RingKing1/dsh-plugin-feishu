@@ -23,5 +23,7 @@ test('schema 里的默认值与运行期默认值一致', () => {
   assert.equal(dict.maxReplyChars.meta?.default, 8000)
   assert.equal(dict.requireMentionInGroup.meta?.default, true)
   assert.equal(dict.domain.meta?.default, 'https://open.feishu.cn')
+  // 留空 = 跟随 dsh 默认权限，不能把所有人默认放开沙箱
+  assert.equal(dict.permissionPreset.meta?.default, '')
   assert.deepEqual(dict.allowedOpenIds.meta?.default, [])
 })
