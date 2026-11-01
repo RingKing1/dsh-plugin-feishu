@@ -1,0 +1,57 @@
+{
+  "name": "dsh-plugin-feishu",
+  "version": "0.1.0",
+  "description": "DSH（DeepSeek Harness）插件：把 dsh 会话接进飞书 / Lark 长连接，卡片流式回复",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.2 <0.3.0",
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "feishu",
+    "lark",
+    "bridge",
+    "bot"
+  ],
+  "license": "MIT",
+  "author": "suveng",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suveng/dsh-plugin-feishu.git"
+  },
+  "homepage": "https://github.com/suveng/dsh-plugin-feishu",
+  "bugs": {
+    "url": "https://github.com/suveng/dsh-plugin-feishu/issues"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "@larksuiteoapi/node-sdk": "^1.68.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5"
+  }
+}
