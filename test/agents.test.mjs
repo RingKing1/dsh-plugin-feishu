@@ -10,6 +10,9 @@ function makePool(selection, options = {}) {
       if (name === 'sessionQuery' && options.sessions !== undefined) {
         return { async listSessions() { return options.sessions } }
       }
+      if (name === 'workspaceRegistry' && options.workspaces !== undefined) {
+        return { list: () => options.workspaces }
+      }
       if (name === 'agentDefaultModel') {
         if (selection === 'throw') return { currentSelection() { throw new Error('boom') } }
         if (selection === undefined) return undefined
@@ -115,4 +118,48 @@ test('老映射里记着进程 cwd 时按未设置处理，重新推断工作区
     sessions: [{ header: { id: 'session-human', cwd: '/work/project', createdAt: 10 } }],
   })
   assert.equal(await pool.resolveCwd(process.cwd()), '/work/project')
+})
+test('建会话后按 cwd 归入同路径工作区，已归过的不重复 attach', async () => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = await mkdtemp(join(tmpdir(), 'feishu-ws-'))
+  const attached = []
+  const workspace = {
+    path: dir,
+    sessionIds: [],
+    async attachSession(id) {
+      attached.push(id)
+      this.sessionIds.push(id)
+    },
+  }
+  const other = {
+    path: join(dir, 'other'),
+    sessionIds: [],
+    async attachSession() {
+      throw new Error('不该挂到别的工作区')
+    },
+  }
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    workdir: dir,
+    workspaces: [other, workspace],
+  })
+  await pool.attachWorkspace('session-a', dir)
+  await pool.attachWorkspace('session-a', dir)
+  assert.deepEqual(attached, ['session-a'])
+
+  // 没有同路径工作区时维持未分组，也不抛错
+  await pool.attachWorkspace('session-b', join(dir, 'nowhere'))
+})
+
+test('归组失败只记日志，不打断消息收发', async () => {
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    workdir: '',
+    workspaces: [{
+      path: '/不存在的路径',
+      sessionIds: [],
+      async attachSession() { throw new Error('boom') },
+    }],
+  })
+  await pool.attachWorkspace('session-x', '/tmp')
 })
