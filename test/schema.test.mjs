@@ -29,8 +29,6 @@ test('schema 里的默认值与运行期默认值一致', () => {
   // 新增字段的默认值必须与 resolveConfig 一致，否则「插件页显示的值」和「实际生效的值」会打架
   assert.equal(dict.resolveSenderName.meta?.default, false)
   assert.equal(dict.askTimeoutMs.meta?.default, 600000)
-  assert.equal(dict.approvalEnabled.meta?.default, true)
-  assert.equal(dict.approvalTimeoutMs.meta?.default, 300000)
-  assert.equal(dict.approvalTimeoutAllow.meta?.default, false)
-  assert.deepEqual(dict.approvalAllowTools.meta?.default, [])
+  assert.equal(dict.approvalCode.meta?.default, '')
+  assert.equal(dict.approvalWidgetId.meta?.default, '')
 })

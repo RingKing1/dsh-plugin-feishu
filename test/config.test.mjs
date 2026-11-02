@@ -113,23 +113,11 @@ test('提问超时默认 10 分钟，越界被夹到 10 秒 ~ 24 小时', () => 
 })
 
 
-test('审批默认开启，超时 5 分钟按拒绝处理，白名单默认空', () => {
+test('飞书审批定义默认未配置；填了去首尾空白', () => {
   const defaults = resolveConfig({ appId: 'a', appSecret: 'b' }, {})
-  assert.equal(defaults.approvalEnabled, true)
-  assert.equal(defaults.approvalTimeoutMs, 300000)
-  assert.equal(defaults.approvalTimeoutAllow, false)
-  assert.deepEqual(defaults.approvalAllowTools, [])
-  // 显式关掉才交回网页端
-  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', approvalEnabled: false }, {}).approvalEnabled, false)
-})
-
-test('审批超时越界被夹到 10 秒 ~ 1 小时，0 回落默认', () => {
-  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', approvalTimeoutMs: 1 }, {}).approvalTimeoutMs, 10000)
-  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', approvalTimeoutMs: 3600001 }, {}).approvalTimeoutMs, 3600000)
-  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', approvalTimeoutMs: 0 }, {}).approvalTimeoutMs, 300000)
-})
-
-test('免审批工具白名单只保留非空字符串', () => {
-  const config = resolveConfig({ appId: 'a', appSecret: 'b', approvalAllowTools: ['read', '  ', ' grep '] }, {})
-  assert.deepEqual(config.approvalAllowTools, ['read', 'grep'])
+  assert.equal(defaults.approvalCode, '')
+  assert.equal(defaults.approvalWidgetId, '')
+  const configured = resolveConfig({ appId: 'a', appSecret: 'b', approvalCode: '  C123  ', approvalWidgetId: ' widget_1 ' }, {})
+  assert.equal(configured.approvalCode, 'C123')
+  assert.equal(configured.approvalWidgetId, 'widget_1')
 })

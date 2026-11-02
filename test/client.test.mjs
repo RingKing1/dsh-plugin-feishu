@@ -163,3 +163,24 @@ test('新功能配置的默认值与提交语义', () => {
   assert.deepEqual([byPath.get('quotedMessageMaxChars').op, byPath.get('quotedMessageMaxChars').value], ['set', 1200])
 })
 
+test('审批配置是审批定义号与控件 id，默认未配置且默认可填', () => {
+  const mod = loadClient()
+  const byKey = new Map(Array.from(mod.FIELDS).map((field) => [field.key, field]))
+  for (const key of ['approvalCode', 'approvalWidgetId']) {
+    assert.equal(byKey.get(key).section, 'approval', key + ' 必须在审批分组')
+    assert.equal(byKey.get(key).kind, 'text', key + ' 是填写不是开关')
+  }
+  const sections = Array.from(mod.SECTIONS)
+  const approval = sections.find((section) => section.id === 'approval')
+  assert.ok(approval, '审批分组必须存在')
+  assert.match(approval.desc, /飞书审批应用/)
+
+  const draft = mod.draftOf({})
+  assert.equal(draft.approvalCode, '')
+  assert.equal(draft.approvalWidgetId, '')
+  const changed = mod.buildOps({ approvalCode: ' C-1 ', approvalWidgetId: '' }, {})
+  const byPath = new Map(changed.map((op) => [op.path[0], op]))
+  assert.deepEqual([byPath.get('approvalCode').op, byPath.get('approvalCode').value], ['set', 'C-1'])
+  assert.equal(byPath.get('approvalWidgetId').op, 'unset')
+})
+

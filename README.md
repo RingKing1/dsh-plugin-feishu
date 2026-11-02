@@ -17,9 +17,9 @@
 | 权限白名单 | 只认指定 open_id；留空则谁都能用（建议自用场景也配一下） |
 | 斜杠命令 | `/new` `/stop` `/status` `/cwd` `/whoami` `/help`，不进模型上下文 |
 | 提问人身份 | 每条消息首行带 `【飞书 · 群聊|单聊 · 张三(90abcdef)】`，模型一眼看到是谁、从哪来；详细字段走 `feishu_identity` 工具 |
-| 飞书工具 | 只在飞书发起的轮次里可见：`feishu_identity`（查提问人）、`feishu_send`（主动补发一条文本） |
+| 飞书工具 | 只在飞书发起的轮次里可见：`feishu_identity`（查提问人）、`feishu_send`（主动补发一条文本）、`feishu_learn_approval_submit` / `feishu_learn_approval_status`（建审批单 / 查审批状态） |
 | 选择题 | 模型用 `ask_user_question` 提问时，问题以卡片发到飞书：点按钮即答，也可以在卡片输入框自由输入（最多 200 字），或直接回文字 |
-| 审批 | DSH 执行需要确认的操作时，审批卡片发到飞书：点「允许一次」/「拒绝」即放行或拦下，也可以直接回文字；配置项在插件页「审批」分组里 |
+| 飞书审批 | 模型调用飞书审批应用建单、用实例号查状态：典型用法是 `/learn` 进化前拿到 `APPROVED` 再动文件；审批定义号在插件页「审批」分组配置 |
 | 执行过程 | 工具调用在卡片顶部的「执行过程」折叠面板里逐条显示：正在跑哪一步、成没成、耗时多少 —— 长任务不再是黑箱 |
 | 停止按钮 | 回复中的卡片末尾有「停止」，点一下中断本轮（等价于 `/stop`），卡片转「已停止」 |
 | 表情回执 | 收到消息先挂「收到」表情；跑完换成 `DONE`，失败换成 `CRY`（可关，可换收到时的表情） |
@@ -191,10 +191,8 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
 | `resolveSenderName` | `false` | 是否调通讯录接口把提问人姓名放进消息首行。开了需要 `contact:user.base:readonly` 权限，且每个提问人 10 分钟内只查一次 |
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
-| `approvalEnabled` | `true` | 是否把 DSH 的审批接到飞书。关掉后不接管，审批仍由网页端弹窗处理 |
-| `approvalTimeoutMs` | `300000` | 审批在飞书里等多久（毫秒，10 秒 ~ 1 小时）；超时按下一项处理 |
-| `approvalTimeoutAllow` | `false` | 超时后是否自动允许。默认关 = 按拒绝处理（fail closed）—— 没人看着时放行一次写操作，代价比重新跑一遍大 |
-| `approvalAllowTools` | `[]` | 免审批工具白名单（工具名精确匹配，大小写不敏感），如 `read, glob, grep`；命中直接放行、不发卡片 |
+| `approvalCode` | 空（未配置） | 飞书审批定义号（`approval_code`）：模型调用提交工具时用它建单。留空 = 未配置，工具明确返回失败，不发空请求 |
+| `approvalWidgetId` | 空（自动） | 审批表单里接收正文的控件 id；留空 = 自动挑（多行文本优先，其次单行文本）。审批定义有多个控件、自动挑错时才填 |
 | `debug` | `false` | 输出调试日志（含去重、忽略原因） |
 
 飞书里新建的会话用的是 **profile 的默认模型**（`agent-default-model` 条目的 `provider`/`model`，
@@ -264,13 +262,14 @@ dsh --profile web          # 启动后日志里应看到：feishu: 飞书长连�
 - **文本与富文本都收**：飞书会把带格式的内容发成 `post` 富文本（例如输入框里敲出来的有序列表），插件先把标题
   与各段文字抽成纯文本再投递；富文本里夹的图片不下载。富文本里只有图片 / 附件，以及图片 / 文件 / 语音等其它类型，
   会给一次提示（同一会话 60 秒内不重复提示）。
-- **审批**：DSH 执行需要确认的操作（沙箱外写入、执行命令等）时，插件抢先接管审批瀑布（`prepend`），把
-  「工具名 + 理由」发成卡片；点按钮或回「允许」/「拒绝」后，暂停中的工具调用继续或终止。同一会话的审批排队发送，
-  不会两张卡叠在一起；等审批期间用户发的普通文字只回一句提示，不投递成新一轮对话。关掉 `approvalEnabled`
-  则不接管，仍由网页端处理。
+- **飞书审批**：模型通过 `feishu_learn_approval_submit` 调飞书审批应用建单（正文写进审批表单的文本控件），
+  立即拿到实例号，不在这里等审批；之后用 `feishu_learn_approval_status` 查一次。只有 `APPROVED` 才能继续执行
+  被授权的操作；`PENDING` / 查询失败都按未通过处理，必须用同一实例号续查，不能重复建单。
+  插件不接管 DSH 自己的工具执行审批，那部分仍由网页端处理。
 - **身份**：每条消息的第一行是来源标记（`【飞书 · 群聊 · 张三(90abcdef)】`），与正文在同一个文本块里 ——
   模型读到正文时就看到了「谁、从哪来」，不需要额外调用；要精确字段（完整 open_id / chat_id）用 `feishu_identity`。
-- **飞书工具按会话可见**：`feishu_identity` / `feishu_send` 只在**当前轮由飞书投递**的会话里出现在工具表里，
+- **飞书工具按会话可见**：`feishu_identity` / `feishu_send` / `feishu_learn_approval_submit` /
+  `feishu_learn_approval_status` 只在**当前轮由飞书投递**的会话里出现在工具表里，
   Web GUI 的会话看不到、也调不了（强行调用返回 `not-feishu-session`）。
 - **选择题**：模型调 `ask_user_question` 时，插件抢先接管（在 DSH 的提问瀑布里用 `prepend`），把题目发成卡片，
   等按钮点击 / 卡片输入框 / 文字回复 / 超时；卡片输入框可自由作答（最多 200 字），适合选项都不合适的情况。
@@ -302,9 +301,8 @@ lib/commands.js       斜杠命令
 lib/identity.js       来源前缀（纯函数：单聊/群聊、姓名、open_id 尾号）
 lib/questions.js      选择题：发卡片、收按钮/文字/超时、组装 answer
 lib/question-card.js  选择题卡片 JSON 与回调解析（纯函数）
-lib/approvals.js      审批：发卡片、收按钮/文字/超时、返回 dsh 的 outcome
-lib/approval-card.js  审批卡片 JSON 与回调解析（纯函数）
-lib/tools.js          飞书工具（feishu_identity / feishu_send）定义与注册
+lib/approval.js       飞书审批应用：建单 / 查单、状态映射、表单控件解析
+lib/tools.js          飞书工具（身份 / 发消息 / 审批提交与查询）定义与注册
 lib/queue.js          每会话串行队列
 lib/log.js            统一日志
 ```
@@ -316,8 +314,8 @@ lib/log.js            统一日志
 - 卡片正文上限受飞书接口限制，超长内容会截断（可调 `maxReplyChars`）。
 - 同一会话内严格串行：连发多条消息时，后一条要等前一轮跑完。
 - 与网页端共用一条会话时（重启后复用），两个人同时说话会像「两个人在同一个聊天框里发言」，回复都落进这条会话。
-- 选择题与审批卡片的按钮点击都依赖应用开通 `card.action.trigger` 回调（长连接模式）；没开通时卡片照样发得出，但点按钮没反应，只能直接回文字。
-- 审批只认「允许一次」：没有「本轮总是允许」，每次写操作都要点一下。嫌烦可以把只读工具加进 `approvalAllowTools`，或把权限预设调到 `danger-full-access`（不建议）。
+- 选择题卡片的按钮点击依赖应用开通 `card.action.trigger` 回调（长连接模式）；没开通时卡片照样发得出，但点按钮没反应，只能直接回文字。
+- 飞书审批的通过 / 拒绝由审批人在飞书审批应用里完成；插件只负责建单与查一次状态，不轮询、不代为审批，也不会把结果主动推回会话。
 
 ## License
 

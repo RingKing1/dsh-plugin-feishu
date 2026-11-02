@@ -11,40 +11,61 @@ const other = { id: 'agent-2' }
 
 function makeRegistry() {
   const sent = []
+  const approvalCalls = []
   const api = {
     async sendText(chatId, text) {
       sent.push({ chatId, text })
       return 'om_sent'
     },
   }
+  const approval = {
+    async create(input) {
+      approvalCalls.push({ type: 'create', ...input })
+      return { ok: true, instanceCode: 'I-1', detail: '', message: '审批已提交（审批实例 I-1）' }
+    },
+    async query(instanceCode) {
+      approvalCalls.push({ type: 'query', instanceCode })
+      return { ok: true, status: 'PENDING', instanceCode, detail: '', message: '审批仍在进行中（审批实例 ' + instanceCode + '）' }
+    },
+  }
   const registry = {
     ownerOf: (value) =>
       value === agent
         ? {
-            bridge: { api },
+            bridge: { api, approval },
             key: 'oc_1',
             turn: { chatId: 'oc_1', chatType: 'group', openId: 'ou_1', senderName: '张三', sessionId: 'session-1' },
           }
         : undefined,
     owns: (value) => value === agent,
   }
-  return { registry, sent }
+  return { registry, sent, approvalCalls }
 }
 
 function tools() {
-  const { registry, sent } = makeRegistry()
+  const { registry, sent, approvalCalls } = makeRegistry()
   const list = buildFeishuTools({ registry, defineTool: fakeDefine })
-  return { sent, list, byName: (name) => list.find((tool) => tool.name === name) }
+  return { sent, approvalCalls, list, byName: (name) => list.find((tool) => tool.name === name) }
 }
 
-test('构造出两个工具，名字稳定', () => {
+test('构造出四个工具，名字稳定', () => {
   const { list } = tools()
-  assert.deepEqual(list.map((tool) => tool.name), ['feishu_identity', 'feishu_send'])
+  assert.deepEqual(list.map((tool) => tool.name), [
+    'feishu_identity',
+    'feishu_send',
+    'feishu_learn_approval_submit',
+    'feishu_learn_approval_status',
+  ])
 })
 
 test('输出 schema 是显式闭合对象（宿主强制要求 additionalProperties）', () => {
   const { byName } = tools()
-  for (const tool of [byName('feishu_identity'), byName('feishu_send')]) {
+  for (const tool of [
+    byName('feishu_identity'),
+    byName('feishu_send'),
+    byName('feishu_learn_approval_submit'),
+    byName('feishu_learn_approval_status'),
+  ]) {
     assert.equal(tool.output.schema.type, 'object')
     assert.equal(tool.output.schema.additionalProperties, false)
     assert.equal(tool.output.schema.properties.ok.required, true)
@@ -104,14 +125,51 @@ test('feishu_send：飞书接口报错时返回 ok=false，不抛出', async () 
   assert.deepEqual(value, { ok: false, reason: 'token 失效' })
 })
 
+test('feishu_learn_approval_submit：用提问人 open_id 建单，正文去空白', async () => {
+  const { byName, approvalCalls } = tools()
+  const value = await byName('feishu_learn_approval_submit').execute({ body: '  要改 README  ' }, { agent })
+  assert.deepEqual(value, {
+    ok: true,
+    instanceCode: 'I-1',
+    message: '审批已提交（审批实例 I-1）',
+    reason: '',
+  })
+  assert.deepEqual(approvalCalls, [{ type: 'create', body: '要改 README', applicantOpenId: 'ou_1' }])
+})
+
+test('feishu_learn_approval_submit：空正文与非飞书会话都不建单', async () => {
+  const { byName, approvalCalls } = tools()
+  const empty = await byName('feishu_learn_approval_submit').execute({ body: '   ' }, { agent })
+  assert.equal(empty.ok, false)
+  assert.match(empty.reason, /正文为空/)
+  const outside = await byName('feishu_learn_approval_submit').execute({ body: 'hi' }, { agent: other })
+  assert.equal(outside.ok, false)
+  assert.equal(outside.reason, 'not-feishu-session')
+  assert.equal(approvalCalls.length, 0)
+})
+
+test('feishu_learn_approval_status：原样传实例号，PENDING 也返回 ok=true', async () => {
+  const { byName, approvalCalls } = tools()
+  const value = await byName('feishu_learn_approval_status').execute({ instanceCode: ' I-1 ' }, { agent })
+  assert.deepEqual(value, {
+    ok: true,
+    status: 'PENDING',
+    instanceCode: 'I-1',
+    message: '审批仍在进行中（审批实例 I-1）',
+    reason: '',
+  })
+  assert.deepEqual(approvalCalls, [{ type: 'query', instanceCode: 'I-1' }])
+  assert.equal((await byName('feishu_learn_approval_status').execute({ instanceCode: 'I-1' }, { agent: other })).ok, false)
+})
+
 test('注册时带上 when 守卫：只对飞书会话可见', () => {
   const { registry } = makeRegistry()
   const captured = []
   const ctx = { tools: { register(definition, options) { captured.push({ definition, options }) } } }
 
   const count = registerFeishuTools({ ctx, registry, log: silentLog, defineTool: fakeDefine })
-  assert.equal(count, 2)
-  assert.equal(captured.length, 2)
+  assert.equal(count, 4)
+  assert.equal(captured.length, 4)
   for (const item of captured) {
     assert.equal(item.options.when({ agent }), true)
     assert.equal(item.options.when({ agent: other }), false)
