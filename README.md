@@ -266,6 +266,8 @@ dsh --profile web          # 启动后日志里应看到：feishu: 飞书长连�
   立即拿到实例号，不在这里等审批；之后用 `feishu_learn_approval_status` 查一次。只有 `APPROVED` 才能继续执行
   被授权的操作；`PENDING` / 查询失败都按未通过处理，必须用同一实例号续查，不能重复建单。
   插件不接管 DSH 自己的工具执行审批，那部分仍由网页端处理。
+  同时把「当前 agent 是不是飞书会话」注册成进程级判据 `dsh.feishu.isFeishuAgent`（值为 `registry.owns`），
+  供 knowledge-flow 的 `/learn 应用` 按会话识别审批通道；本地会话仍走降级分支。
 - **身份**：每条消息的第一行是来源标记（`【飞书 · 群聊 · 张三(90abcdef)】`），与正文在同一个文本块里 ——
   模型读到正文时就看到了「谁、从哪来」，不需要额外调用；要精确字段（完整 open_id / chat_id）用 `feishu_identity`。
 - **飞书工具按会话可见**：`feishu_identity` / `feishu_send` / `feishu_learn_approval_submit` /
