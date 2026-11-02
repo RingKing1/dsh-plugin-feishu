@@ -48,7 +48,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/suveng/dsh-plugin-feishu",
-            "commit": "c4495fc89256291fb339527a67d6563a795dd975"
+            "commit": "222de87b0fbc309363dc14ff15ef8a0e6ff32867"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.2 <0.3.0"
