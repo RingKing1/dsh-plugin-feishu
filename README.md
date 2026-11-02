@@ -19,6 +19,7 @@
 | 提问人身份 | 每条消息首行带 `【飞书 · 群聊|单聊 · 张三(90abcdef)】`，模型一眼看到是谁、从哪来；详细字段走 `feishu_identity` 工具 |
 | 飞书工具 | 只在飞书发起的轮次里可见：`feishu_identity`（查提问人）、`feishu_send`（主动补发一条文本） |
 | 选择题 | 模型用 `ask_user_question` 提问时，问题以卡片发到飞书：点按钮即答，也可以直接回文字 |
+| 审批 | DSH 执行需要确认的操作时，审批卡片发到飞书：点「允许一次」/「拒绝」即放行或拦下，也可以直接回文字；配置项在插件页「审批」分组里 |
 
 ## 工作原理
 
@@ -175,6 +176,10 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
 | `resolveSenderName` | `false` | 是否调通讯录接口把提问人姓名放进消息首行。开了需要 `contact:user.base:readonly` 权限，且每个提问人 10 分钟内只查一次 |
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
+| `approvalEnabled` | `true` | 是否把 DSH 的审批接到飞书。关掉后不接管，审批仍由网页端弹窗处理 |
+| `approvalTimeoutMs` | `300000` | 审批在飞书里等多久（毫秒，10 秒 ~ 1 小时）；超时按下一项处理 |
+| `approvalTimeoutAllow` | `false` | 超时后是否自动允许。默认关 = 按拒绝处理（fail closed）—— 没人看着时放行一次写操作，代价比重新跑一遍大 |
+| `approvalAllowTools` | `[]` | 免审批工具白名单（工具名精确匹配，大小写不敏感），如 `read, glob, grep`；命中直接放行、不发卡片 |
 | `debug` | `false` | 输出调试日志（含去重、忽略原因） |
 
 飞书里新建的会话用的是 **profile 的默认模型**（`agent-default-model` 条目的 `provider`/`model`，
@@ -225,7 +230,10 @@ dsh --profile web          # 启动后日志里应看到：feishu: 飞书长连�
 - **一卡一轮**：每轮开始建卡，结束收尾；建卡失败自动退化为纯文本回复，回复不会因为卡片故障丢失。
 - **去重**：飞书会重投事件，插件按 `message_id` 去重（保留最近 1000 条）。
 - **只支持文本消息**：图片 / 文件 / 语音等会给一次提示（同一会话 60 秒内不重复提示）。
-- **审批**：插件不代理 DSH 的审批。用飞书驱动任务时，请把 DSH 审批策略设为不询问（或只放开只读工具），否则会话会卡在等审批。
+- **审批**：DSH 执行需要确认的操作（沙箱外写入、执行命令等）时，插件抢先接管审批瀑布（`prepend`），把
+  「工具名 + 理由」发成卡片；点按钮或回「允许」/「拒绝」后，暂停中的工具调用继续或终止。同一会话的审批排队发送，
+  不会两张卡叠在一起；等审批期间用户发的普通文字只回一句提示，不投递成新一轮对话。关掉 `approvalEnabled`
+  则不接管，仍由网页端处理。
 - **身份**：每条消息的第一行是来源标记（`【飞书 · 群聊 · 张三(90abcdef)】`），与正文在同一个文本块里 ——
   模型读到正文时就看到了「谁、从哪来」，不需要额外调用；要精确字段（完整 open_id / chat_id）用 `feishu_identity`。
 - **飞书工具按会话可见**：`feishu_identity` / `feishu_send` 只在**当前轮由飞书投递**的会话里出现在工具表里，
@@ -257,6 +265,8 @@ lib/commands.js       斜杠命令
 lib/identity.js       来源前缀（纯函数：单聊/群聊、姓名、open_id 尾号）
 lib/questions.js      选择题：发卡片、收按钮/文字/超时、组装 answer
 lib/question-card.js  选择题卡片 JSON 与回调解析（纯函数）
+lib/approvals.js      审批：发卡片、收按钮/文字/超时、返回 dsh 的 outcome
+lib/approval-card.js  审批卡片 JSON 与回调解析（纯函数）
 lib/tools.js          飞书工具（feishu_identity / feishu_send）定义与注册
 lib/queue.js          每会话串行队列
 lib/log.js            统一日志
@@ -268,7 +278,8 @@ lib/log.js            统一日志
 - 不支持多模态输入（图片 / 文件 / 语音）—— 需要的话建议先落到工作目录再让模型读文件。
 - 卡片正文上限受飞书接口限制，超长内容会截断（可调 `maxReplyChars`）。
 - 同一会话内严格串行：连发多条消息时，后一条要等前一轮跑完。
-- 选择题的按钮点击依赖应用开通 `card.action.trigger` 回调（长连接模式）；没开通时卡片照样发得出，但点按钮没反应，只能直接回文字。
+- 选择题与审批卡片的按钮点击都依赖应用开通 `card.action.trigger` 回调（长连接模式）；没开通时卡片照样发得出，但点按钮没反应，只能直接回文字。
+- 审批只认「允许一次」：没有「本轮总是允许」，每次写操作都要点一下。嫌烦可以把只读工具加进 `approvalAllowTools`，或把权限预设调到 `danger-full-access`（不建议）。
 
 ## License
 
