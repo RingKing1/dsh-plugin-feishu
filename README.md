@@ -106,6 +106,10 @@ https://raw.githubusercontent.com/suveng/dsh-plugin-feishu/main/market/index.jso
 
 三种方式，任选其一（优先级：界面 / 配置文件 > 环境变量）。
 
+> 执行过程、表情回执、引用展开这四项在侧边栏 **飞书 → 「消息交互」** 分组里（默认就展开，不在「高级设置」里）：
+> 执行过程是下拉（完整清单 / 只显示当前一步 / 不显示），表情回执是下拉（含「自定义…」可填任意飞书 emoji key），
+> 引用展开是开关 + 字数上限。改完保存，下一轮消息生效，不用手改 yaml。
+
 > 界面配色全部取 dsh 主题 token（`--dsw-alias-*`），浅色/深色主题自动跟随。
 > 主按钮用的是 `--dsw-alias-button-primary-fill` + `--dsw-alias-label-primary-foreground` 这一对 ——
 > 不能拿 `--dsw-alias-brand-primary` 当按钮底色：它在深色主题里是近白色，配白字会看不见。

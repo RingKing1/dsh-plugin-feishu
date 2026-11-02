@@ -118,3 +118,48 @@ test('buildOps：与继承值相同用 unset，不同用 set，secret 留空不�
   assert.equal(byPath.get('requireMentionInGroup').op, 'unset')
   assert.equal(byPath.get('domain').op, 'unset')
 })
+
+test('新功能配置在「消息交互」分组，且是下拉/开关而不是自由文本', () => {
+  const mod = loadClient()
+  const byKey = new Map(Array.from(mod.FIELDS).map((field) => [field.key, field]))
+  for (const key of ['progressMode', 'reactEmoji', 'includeQuotedMessage', 'quotedMessageMaxChars']) {
+    assert.equal(byKey.get(key).section, 'interaction', key + ' 必须在消息交互分组')
+  }
+  const progress = byKey.get('progressMode')
+  assert.equal(progress.kind, 'select')
+  assert.deepEqual(Array.from(progress.options).map((option) => option.value), ['steps', 'action', 'off'])
+
+  const emoji = byKey.get('reactEmoji')
+  assert.equal(emoji.kind, 'select')
+  assert.equal(emoji.allowCustom, true)
+  assert.deepEqual(Array.from(emoji.options).map((option) => option.value), ['', 'Get', 'OK', 'THUMBSUP', 'SMILE', 'HEART'])
+
+  const sections = Array.from(mod.SECTIONS).map((section) => section.id)
+  // interaction 不是 advanced，默认就展开，不用点「高级设置」才看得到
+  assert.equal(sections.includes('interaction'), true)
+})
+
+test('新功能配置的默认值与提交语义', () => {
+  const mod = loadClient()
+  const draft = mod.draftOf({})
+  assert.equal(draft.progressMode, 'steps')
+  assert.equal(draft.reactEmoji, 'Get')
+  assert.equal(draft.includeQuotedMessage, true)
+  assert.equal(draft.quotedMessageMaxChars, '8000')
+
+  const base = { progressMode: 'steps', reactEmoji: 'Get', includeQuotedMessage: true, quotedMessageMaxChars: 8000 }
+  const same = mod.buildOps({ progressMode: 'steps', reactEmoji: 'Get', includeQuotedMessage: true, quotedMessageMaxChars: '8000' }, base)
+  for (const key of ['progressMode', 'reactEmoji', 'includeQuotedMessage', 'quotedMessageMaxChars']) {
+    const op = same.find((row) => row.path[0] === key)
+    assert.equal(op.op, 'unset', key + ' 与继承值相同应 unset')
+  }
+
+  const changed = mod.buildOps({ progressMode: 'off', reactEmoji: '', includeQuotedMessage: false, quotedMessageMaxChars: '1200' }, base)
+  const byPath = new Map(changed.map((op) => [op.path[0], op]))
+  assert.deepEqual([byPath.get('progressMode').op, byPath.get('progressMode').value], ['set', 'off'])
+  // 空串是「关闭表情回执」的合法取值，不能被 trim 丢掉
+  assert.deepEqual([byPath.get('reactEmoji').op, byPath.get('reactEmoji').value], ['set', ''])
+  assert.deepEqual([byPath.get('includeQuotedMessage').op, byPath.get('includeQuotedMessage').value], ['set', false])
+  assert.deepEqual([byPath.get('quotedMessageMaxChars').op, byPath.get('quotedMessageMaxChars').value], ['set', 1200])
+})
+
