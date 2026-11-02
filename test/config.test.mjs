@@ -97,3 +97,18 @@ test('describeConfig 不泄露 appSecret', () => {
   assert.equal(described.appIdPrefix, 'cli_12')
   assert.ok(!JSON.stringify(described).includes('super-secret'))
 })
+
+test('姓名解析默认关闭，只有显式 true 才开', () => {
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b' }, {}).resolveSenderName, false)
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: 'yes' }, {}).resolveSenderName, false)
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: true }, {}).resolveSenderName, true)
+})
+
+test('提问超时默认 10 分钟，越界被夹到 10 秒 ~ 24 小时', () => {
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b' }, {}).askTimeoutMs, 600000)
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', askTimeoutMs: 1 }, {}).askTimeoutMs, 10000)
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', askTimeoutMs: 86400001 }, {}).askTimeoutMs, 86400000)
+  // 0 / 空值回落默认值，不能变成「立刻超时」
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', askTimeoutMs: 0 }, {}).askTimeoutMs, 600000)
+})
+

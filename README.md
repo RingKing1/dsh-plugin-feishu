@@ -16,6 +16,9 @@
 | 消息串行 | 同一会话连发多条按顺序处理，不会两条消息抢同一个轮次 |
 | 权限白名单 | 只认指定 open_id；留空则谁都能用（建议自用场景也配一下） |
 | 斜杠命令 | `/new` `/stop` `/status` `/cwd` `/whoami` `/help`，不进模型上下文 |
+| 提问人身份 | 每条消息首行带 `【飞书 · 群聊|单聊 · 张三(90abcdef)】`，模型一眼看到是谁、从哪来；详细字段走 `feishu_identity` 工具 |
+| 飞书工具 | 只在飞书发起的轮次里可见：`feishu_identity`（查提问人）、`feishu_send`（主动补发一条文本） |
+| 选择题 | 模型用 `ask_user_question` 提问时，问题以卡片发到飞书：点按钮即答，也可以直接回文字 |
 
 ## 工作原理
 
@@ -53,13 +56,16 @@ FeishuBridge ── 归一化/去重/白名单 ── 每会话串行队列
    | `im:message:send_as_bot`（以应用身份发消息） | 发卡片与文本回复 |
    | `im:chat:readonly`（获取群组信息） | 读取群 / 话题会话信息 |
    | `im:message.p2p_msg:readonly` | 接收单聊消息 |
+   | `contact:user.base:readonly`（可选） | 把提问人姓名显示在消息首行（`resolveSenderName=true` 才需要；没开也能用，只是首行显示 open_id 尾号） |
 
    群里**不 @ 机器人也要响应**时，额外开「获取群组中所有消息」（`im:message.group_msg`），
    并把插件配置 `requireMentionInGroup` 设为 `false`。
 
 3. **事件与回调 → 事件配置**：订阅方式选**使用长连接接收事件**，添加事件 `im.message.receive_v1`（接收消息 v2.0）。
-4. **应用功能 → 机器人**：启用机器人。
-5. 版本管理与发布 → 创建版本并发布（企业内自建应用一般需要管理员审核）。
+4. **事件与回调 → 回调配置**：订阅方式同样选**使用长连接**，添加回调 `card.action.trigger`（卡片回传交互）。
+   不开这一步，飞书里的选择题卡片点了没反应，只能靠直接回文字。
+5. **应用功能 → 机器人**：启用机器人。
+6. 版本管理与发布 → 创建版本并发布（企业内自建应用一般需要管理员审核）。
 
 > 长连接是**集群模式、不广播**：同一个 `appId` 开了多条连接，事件会随机落到其中一条。
 > 所以一个飞书应用只能配一个 DSH 实例；要接多个工作区，请为每个工作区建一个独立应用。
@@ -167,6 +173,8 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `streamIntervalMs` | `700` | 卡片流式刷新间隔（毫秒），飞书侧限频，不建议低于 200 |
 | `maxReplyChars` | `8000` | 单张卡片正文上限，超出截断并在文末提示 |
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
+| `resolveSenderName` | `false` | 是否调通讯录接口把提问人姓名放进消息首行。开了需要 `contact:user.base:readonly` 权限，且每个提问人 10 分钟内只查一次 |
+| `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
 | `debug` | `false` | 输出调试日志（含去重、忽略原因） |
 
 飞书里新建的会话用的是 **profile 的默认模型**（`agent-default-model` 条目的 `provider`/`model`，
@@ -218,6 +226,13 @@ dsh --profile web          # 启动后日志里应看到：feishu: 飞书长连�
 - **去重**：飞书会重投事件，插件按 `message_id` 去重（保留最近 1000 条）。
 - **只支持文本消息**：图片 / 文件 / 语音等会给一次提示（同一会话 60 秒内不重复提示）。
 - **审批**：插件不代理 DSH 的审批。用飞书驱动任务时，请把 DSH 审批策略设为不询问（或只放开只读工具），否则会话会卡在等审批。
+- **身份**：每条消息的第一行是来源标记（`【飞书 · 群聊 · 张三(90abcdef)】`），与正文在同一个文本块里 ——
+  模型读到正文时就看到了「谁、从哪来」，不需要额外调用；要精确字段（完整 open_id / chat_id）用 `feishu_identity`。
+- **飞书工具按会话可见**：`feishu_identity` / `feishu_send` 只在**当前轮由飞书投递**的会话里出现在工具表里，
+  Web GUI 的会话看不到、也调不了（强行调用返回 `not-feishu-session`）。
+- **选择题**：模型调 `ask_user_question` 时，插件抢先接管（在 DSH 的提问瀑布里用 `prepend`），把题目发成卡片，
+  等按钮点击 / 文字回复 / 超时；同一会话同时只允许一个待答问题，等答期间用户发的文字会被当成答案，不会再开新一轮。
+  Web GUI 的会话不受影响，仍走原生问答。
 
 ## 开发
 
@@ -239,6 +254,10 @@ lib/reply-card.js     一轮回复对应的一张流式卡片
 lib/feishu-api.js     飞书 HTTP 接口（token 缓存、重试、错误包装）
 lib/session-store.js  会话映射落盘（原子写）
 lib/commands.js       斜杠命令
+lib/identity.js       来源前缀（纯函数：单聊/群聊、姓名、open_id 尾号）
+lib/questions.js      选择题：发卡片、收按钮/文字/超时、组装 answer
+lib/question-card.js  选择题卡片 JSON 与回调解析（纯函数）
+lib/tools.js          飞书工具（feishu_identity / feishu_send）定义与注册
 lib/queue.js          每会话串行队列
 lib/log.js            统一日志
 ```
@@ -249,6 +268,7 @@ lib/log.js            统一日志
 - 不支持多模态输入（图片 / 文件 / 语音）—— 需要的话建议先落到工作目录再让模型读文件。
 - 卡片正文上限受飞书接口限制，超长内容会截断（可调 `maxReplyChars`）。
 - 同一会话内严格串行：连发多条消息时，后一条要等前一轮跑完。
+- 选择题的按钮点击依赖应用开通 `card.action.trigger` 回调（长连接模式）；没开通时卡片照样发得出，但点按钮没反应，只能直接回文字。
 
 ## License
 

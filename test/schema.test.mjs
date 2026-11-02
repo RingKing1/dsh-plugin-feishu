@@ -26,4 +26,7 @@ test('schema 里的默认值与运行期默认值一致', () => {
   // 留空 = 跟随 dsh 默认权限，不能把所有人默认放开沙箱
   assert.equal(dict.permissionPreset.meta?.default, '')
   assert.deepEqual(dict.allowedOpenIds.meta?.default, [])
+  // 新增字段的默认值必须与 resolveConfig 一致，否则「插件页显示的值」和「实际生效的值」会打架
+  assert.equal(dict.resolveSenderName.meta?.default, false)
+  assert.equal(dict.askTimeoutMs.meta?.default, 600000)
 })
