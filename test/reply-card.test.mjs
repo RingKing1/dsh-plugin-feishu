@@ -145,3 +145,83 @@ test('dispose 后不再推送', async () => {
   await card.flushNow()
   assert.equal(api.calls.filter((call) => call[0] === 'putCardContent').length, 0)
 })
+
+test('工具调用会推送执行过程面板与标题', async () => {
+  const api = makeApi()
+  api.putProgress = async (cardId, content, sequence) => {
+    api.calls.push(['putProgress', cardId, content, sequence])
+  }
+  api.putProgressPanel = async (cardId, title, sequence) => {
+    api.calls.push(['putProgressPanel', cardId, title, sequence])
+  }
+  const card = makeCard(api)
+  await card.start()
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' })
+  await card.flushNow()
+
+  const progress = api.calls.find((call) => call[0] === 'putProgress')
+  assert.ok(progress)
+  assert.ok(progress[2].startsWith('> '))
+  assert.ok(progress[2].includes('bash'))
+  const panel = api.calls.find((call) => call[0] === 'putProgressPanel')
+  assert.ok(panel)
+  assert.ok(panel[2].includes('正在执行 bash'))
+
+  card.trackToolResult({ message: { callId: 'c1', isError: false } })
+  await card.flushNow()
+  const latest = api.calls.filter((call) => call[0] === 'putProgress').pop()
+  assert.ok(latest[2].includes('✅'))
+})
+
+test('finish 时过程清单必须赶在关流式之前推送', async () => {
+  const api = makeApi()
+  api.putProgress = async (cardId, content, sequence) => {
+    api.calls.push(['putProgress', cardId, content, sequence])
+  }
+  api.putProgressPanel = async (cardId, title, sequence) => {
+    api.calls.push(['putProgressPanel', cardId, title, sequence])
+  }
+  const card = makeCard(api)
+  await card.start()
+  card.append('答案')
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' })
+  await card.finish({ status: 'done' })
+
+  const progressIndex = api.calls.findIndex((call) => call[0] === 'putProgress')
+  const closeIndex = api.calls.findIndex((call) => call[0] === 'closeStreaming')
+  assert.ok(progressIndex >= 0)
+  assert.ok(progressIndex < closeIndex)
+})
+
+test('pauseForAsk 定格成橙色「等你选择」并关闭本卡', async () => {
+  const api = makeApi()
+  const card = makeCard(api, { key: 'oc_1' })
+  await card.start()
+  card.append('说到一半')
+  const paused = await card.pauseForAsk('已暂停，等你先在选择题卡片上作答')
+  assert.equal(paused, true)
+  assert.equal(card.closed, true)
+
+  const update = api.calls.find((call) => call[0] === 'updateCard')
+  assert.equal(update[2].header.template, 'orange')
+  assert.ok(update[2].body.elements[0].content.includes('已暂停'))
+  // 定格后停止按钮仍在：用户可以直接放弃这轮
+  assert.ok(update[2].body.elements.some((element) => element.tag === 'button'))
+
+  // 定格之后不再接受正文与过程推送
+  const putCount = api.calls.filter((call) => call[0] === 'putCardContent').length
+  card.append('后续内容')
+  await card.flushNow()
+  assert.equal(api.calls.filter((call) => call[0] === 'putCardContent').length, putCount)
+})
+
+test('卡片还没建起来时 pauseForAsk 返回 false，由上层照常发问题卡', async () => {
+  const api = makeApi()
+  api.createCard = async () => {
+    throw new Error('boom')
+  }
+  const card = makeCard(api)
+  await card.start()
+  assert.equal(await card.pauseForAsk('已暂停'), false)
+  assert.equal(card.closed, true)
+})

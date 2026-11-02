@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { conversationKey, extractText, normalizeEvent, stripMentions } from '../lib/inbound.js'
+import {
+  conversationKey,
+  extractItemText,
+  extractText,
+  flattenPost,
+  normalizeEvent,
+  stripMentions,
+} from '../lib/inbound.js'
 
 const BOT = 'ou_bot'
 
@@ -95,7 +102,141 @@ test('stripMentions 去掉所有占位符并压缩空白', () => {
   assert.equal(text, '看下 这个')
 })
 
+test('stripMentions 保留换行，条目边界不丢', () => {
+  const text = stripMentions('@_user_1 1. 甲\n2. 乙\n\n\n3. 丙', [{ key: '@_user_1' }])
+  assert.equal(text, '1. 甲\n2. 乙\n\n3. 丙')
+})
+
 test('会话键区分同一群的不用话题', () => {
   assert.equal(conversationKey({ chatId: 'oc_1', threadId: '' }), 'oc_1')
   assert.equal(conversationKey({ chatId: 'oc_1', threadId: 'omt_9' }), 'oc_1:omt_9')
+})
+function postEvent(overrides) {
+  const message = Object.assign(
+    {
+      message_id: 'om_post',
+      chat_id: 'oc_1',
+      chat_type: 'p2p',
+      message_type: 'post',
+      content: JSON.stringify({
+        title: '',
+        content: [[{ tag: 'text', text: '第一段' }], [{ tag: 'text', text: '第二段' }]],
+      }),
+      create_time: '1700000000000',
+    },
+    overrides && overrides.message,
+  )
+  const sender = { sender_type: 'user', sender_id: { open_id: 'ou_user' } }
+  return { schema: '2.0', event: { message, sender } }
+}
+
+test('富文本消息（post）归一化成文本', () => {
+  const result = normalizeEvent(postEvent(), {})
+  assert.equal(result.kind, 'message')
+  assert.equal(result.messageId, 'om_post')
+  // 段落之间必须保留换行：用户按条目写的内容不能被压成一大段
+  assert.equal(result.text, '第一段\n第二段')
+})
+
+test('富文本标题并入正文', () => {
+  const raw = postEvent({
+    message: {
+      content: JSON.stringify({
+        title: '待办',
+        content: [[{ tag: 'text', text: '1. 甲' }], [{ tag: 'text', text: '2. 乙' }]],
+      }),
+    },
+  })
+  assert.equal(normalizeEvent(raw, {}).text, '待办\n1. 甲\n2. 乙')
+})
+
+test('富文本里的 @ 节点不进正文，@ 机器人 后仍能取到指令', () => {
+  const raw = postEvent({
+    message: {
+      chat_type: 'group',
+      content: JSON.stringify({
+        content: [
+          [{ tag: 'at', user_id: '@_user_1' }, { tag: 'text', text: ' 看下构建日志' }],
+        ],
+      }),
+      mentions: [{ key: '@_user_1', id: { open_id: BOT }, name: '机器人' }],
+    },
+  })
+  const result = normalizeEvent(raw, { botOpenId: BOT, requireMentionInGroup: true })
+  assert.equal(result.kind, 'message')
+  assert.equal(result.text, '看下构建日志')
+})
+
+test('富文本同一段落内的多个片段直接拼接', () => {
+  const raw = postEvent({
+    message: {
+      content: JSON.stringify({
+        content: [[
+          { tag: 'text', text: '看这个链接' },
+          { tag: 'a', text: '文档', href: 'https://example.com' },
+        ]],
+      }),
+    },
+  })
+  assert.equal(normalizeEvent(raw, {}).text, '看这个链接文档')
+})
+
+test('富文本只有图片时返回 unsupported-post-empty', () => {
+  const raw = postEvent({
+    message: { content: JSON.stringify({ content: [[{ tag: 'img', image_key: 'img_x' }]] }) },
+  })
+  const result = normalizeEvent(raw, {})
+  assert.equal(result.reason, 'unsupported-post-empty')
+  assert.equal(result.messageType, 'post')
+  assert.equal(result.chatId, 'oc_1')
+})
+
+test('富文本 content 解析不出文字时用 content_v2 兜底', () => {
+  const post = { title: '', content: [], content_v2: [[{ tag: 'text', text: 'v2 正文' }]] }
+  assert.equal(flattenPost(post), 'v2 正文')
+})
+
+test('富文本 content 不是合法 JSON 时返回空文本', () => {
+  assert.equal(extractText({ message_type: 'post', content: '{bad' }), '')
+  assert.equal(extractText({ message_type: 'post', content: '{}' }), '')
+})
+
+test('富文本列表项各自成行', () => {
+  const raw = postEvent({
+    message: {
+      content: JSON.stringify({
+        content: [[
+          { tag: 'li', content: [{ tag: 'text', text: '甲' }] },
+          { tag: 'li', content: [{ tag: 'text', text: '乙' }] },
+        ]],
+      }),
+    },
+  })
+  assert.equal(normalizeEvent(raw, {}).text, '甲\n乙')
+})
+
+test('事件带出被引用消息 id 与话题根 id', () => {
+  const raw = textEvent({ message: { parent_id: 'om_parent', root_id: 'om_root' } })
+  const result = normalizeEvent(raw, {})
+  assert.equal(result.parentId, 'om_parent')
+  assert.equal(result.rootId, 'om_root')
+})
+
+test('extractItemText 兼容 msg_type + body.content 形态', () => {
+  const text = { msg_type: 'text', body: { content: JSON.stringify({ text: '被引用的话' }) } }
+  assert.deepEqual(extractItemText(text), { messageType: 'text', text: '被引用的话' })
+
+  const post = {
+    msg_type: 'post',
+    body: {
+      content: JSON.stringify({ content: [[{ tag: 'text', text: '甲' }], [{ tag: 'text', text: '乙' }]] }),
+    },
+  }
+  assert.deepEqual(extractItemText(post), { messageType: 'post', text: '甲\n乙' })
+
+  assert.deepEqual(extractItemText({ msg_type: 'image', body: { content: '{}' } }), {
+    messageType: 'image',
+    text: '',
+  })
+  assert.deepEqual(extractItemText(undefined), { messageType: '', text: '' })
 })
