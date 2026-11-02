@@ -5,6 +5,8 @@ import { AgentPool } from '../lib/agents.js'
 /** 造一个最小 ctx：agents 记录调用参数，agentDefaultModel 返回给定选择 */
 function makePool(selection, options = {}) {
   const calls = []
+  const sets = []
+  const liveAgents = options.liveAgents || new Map()
   const ctx = {
     get(name) {
       if (name === 'sessionQuery' && (options.sessions !== undefined || options.observation !== undefined)) {
@@ -26,6 +28,9 @@ function makePool(selection, options = {}) {
       return undefined
     },
     agents: {
+      get(id) {
+        return liveAgents.get(id)
+      },
       async create(input) {
         calls.push(['create', input])
         return { agent: { ctx: { on: () => () => {} }, session: options.session || { id: input.sessionId } } }
@@ -39,7 +44,8 @@ function makePool(selection, options = {}) {
   const store = {
     sessions: new Map(options.ownSessions || []),
     get: () => options.saved,
-    set: async () => {},
+    set: async (key, value) => { sets.push([key, value]) },
+    delete: async () => {},
   }
   const pool = new AgentPool({
     ctx,
@@ -47,7 +53,7 @@ function makePool(selection, options = {}) {
     store,
     log: { info() {}, warn() {}, debug() {}, error() {} },
   })
-  return { pool, calls }
+  return { pool, calls, sets, liveAgents }
 }
 
 test('新建会话带上 profile 的默认模型（否则 dsh 会报 has no provider/model）', async () => {
@@ -276,4 +282,63 @@ test('没有 agentPresets 服务时照旧创建（不传 setup / 不写预设）
   const create = calls.find(([kind]) => kind === 'create')
   assert.equal(create[1].setup, undefined)
   assert.equal(create[1].meta.agentPreset, undefined)
+})
+
+// ---- 宿主重启后会话延续：网页端已恢复的会话直接复用 ----
+
+test('网页端开着的同一条会话直接复用，不再 resume 也不再新建', async () => {
+  const shared = { ctx: { on: () => () => {} }, session: { id: 'session-shared' }, status: 'idle' }
+  const liveAgents = new Map([['session-shared', shared]])
+  const { pool, calls, sets } = makePool({ provider: 'p', model: 'm' }, {
+    saved: { sessionId: 'session-shared', cwd: '/tmp' },
+    liveAgents,
+  })
+  const agent = await pool.resolve('chat-1')
+  assert.equal(agent, shared)
+  assert.deepEqual(calls, [])
+  assert.deepEqual(sets, [])
+  assert.equal(pool.isBorrowed('chat-1'), true)
+})
+
+test('宿主的 agents.get 抛错时退回正常恢复流程', async () => {
+  const { pool, calls } = makePool({ provider: 'p', model: 'm' }, { saved: { sessionId: 'session-x', cwd: '/tmp' } })
+  pool.ctx.agents.get = () => { throw new Error('boom') }
+  await pool.resolve('chat-1')
+  assert.equal(calls[0][0], 'resume')
+  assert.equal(pool.isBorrowed('chat-1'), false)
+})
+
+test('借用的会话被网页关掉后，下一条消息自动按映射恢复', async () => {
+  const shared = { ctx: { on: () => () => {} }, session: { id: 'session-shared' }, status: 'idle' }
+  const liveAgents = new Map([['session-shared', shared]])
+  const { pool, calls } = makePool({ provider: 'p', model: 'm' }, {
+    saved: { sessionId: 'session-shared', cwd: '/tmp' },
+    liveAgents,
+  })
+  await pool.resolve('chat-1')
+  liveAgents.delete('session-shared')
+  await pool.resolve('chat-1')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][0], 'resume')
+  assert.equal(calls[0][1].resumeSessionId, 'session-shared')
+  assert.equal(pool.isBorrowed('chat-1'), false)
+})
+
+test('/new 对借用的会话只解除绑定，不中断网页端那一轮', async () => {
+  let cancelled = false
+  const shared = {
+    ctx: { on: () => () => {} },
+    session: { id: 'session-shared' },
+    status: 'running',
+    cancel() { cancelled = true },
+  }
+  const liveAgents = new Map([['session-shared', shared]])
+  const { pool } = makePool({ provider: 'p', model: 'm' }, {
+    saved: { sessionId: 'session-shared', cwd: '/tmp' },
+    liveAgents,
+  })
+  await pool.resolve('chat-1')
+  await pool.destroy('chat-1')
+  assert.equal(cancelled, false)
+  assert.equal(pool.get('chat-1'), undefined)
 })
