@@ -198,13 +198,14 @@ test('pauseForAsk 定格成橙色「等你选择」并关闭本卡', async () =>
   const card = makeCard(api, { key: 'oc_1' })
   await card.start()
   card.append('说到一半')
-  const paused = await card.pauseForAsk('已暂停，等你先在选择题卡片上作答')
+  const paused = await card.pauseForAsk('等你选择')
   assert.equal(paused, true)
   assert.equal(card.closed, true)
 
   const update = api.calls.find((call) => call[0] === 'updateCard')
   assert.equal(update[2].header.template, 'orange')
-  assert.ok(update[2].body.elements[0].content.includes('已暂停'))
+  assert.ok(update[2].body.elements[0].content.includes('等你选择'))
+  assert.equal(update[2].body.elements[0].content, '等你选择\n\n说到一半', '备注与正文各出现一次，不能重复' )
   // 定格后停止按钮仍在：用户可以直接放弃这轮
   assert.ok(update[2].body.elements.some((element) => element.tag === 'button'))
 
@@ -213,6 +214,36 @@ test('pauseForAsk 定格成橙色「等你选择」并关闭本卡', async () =>
   card.append('后续内容')
   await card.flushNow()
   assert.equal(api.calls.filter((call) => call[0] === 'putCardContent').length, putCount)
+})
+
+test('markAnswered：把已关闭的暂停卡原地翻成灰色「已选择」', async () => {
+  const api = makeApi()
+  const card = makeCard(api, { key: 'oc_1' })
+  await card.start()
+  card.append('已经说到一半')
+  await card.pauseForAsk('等你选择')
+  const ok = await card.markAnswered()
+  assert.equal(ok, true)
+
+  const updates = api.calls.filter((call) => call[0] === 'updateCard')
+  const final = updates[updates.length - 1][2]
+  assert.equal(final.header.template, 'grey')
+  assert.equal(final.header.title.content, '已选择')
+  assert.equal(final.body.elements[0].content, '已经说到一半')
+  assert.equal(final.body.elements.some((element) => element.tag === 'button'), false, '终态不再给停止按钮')
+})
+
+test('settlePaused：取消时把暂停卡翻成灰色「已停止」并带说明', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  await card.pauseForAsk('等你选择')
+  assert.equal(await card.settlePaused('stopped', '提问已结束'), true)
+  const updates = api.calls.filter((call) => call[0] === 'updateCard')
+  const final = updates[updates.length - 1][2]
+  assert.equal(final.header.template, 'grey')
+  assert.equal(final.header.title.content, '已停止')
+  assert.equal(final.body.elements[0].content, '提问已结束')
 })
 
 test('卡片还没建起来时 pauseForAsk 返回 false，由上层照常发问题卡', async () => {

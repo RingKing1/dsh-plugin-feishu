@@ -4,8 +4,8 @@ import { parseTextAnswer, QuestionHub } from '../lib/questions.js'
 
 const silentLog = { debug() {}, info() {}, warn() {}, error() {} }
 
-function fakeApi() {
-  const calls = { interactive: [], text: [] }
+function fakeApi(options) {
+  const calls = { interactive: [], text: [], patch: [] }
   return {
     calls,
     async sendInteractive(chatId, card) {
@@ -15,6 +15,11 @@ function fakeApi() {
     async sendText(chatId, text) {
       calls.text.push({ chatId, text })
       return 'om_text'
+    },
+    async patchCardMessage(messageId, card) {
+      if (options && options.patchFails) throw new Error('patch 失败')
+      calls.patch.push({ messageId, card })
+      return true
     },
   }
 }
@@ -37,26 +42,91 @@ function settled(promise) {
   return promise.then((value) => ({ ok: true, value }), (error) => ({ ok: false, error }))
 }
 
-test('点按钮作答：返回 toast 并让 ask 解析出答案', async () => {
+test('点按钮作答：回调原地刷新成「已选择」并让 ask 解析出答案', async () => {
   const { hub } = makeHub()
   const pendingResult = settled(hub.ask({ questions: single }, turn))
   const pending = hub.pendingFor('oc_1')
   assert.ok(pending, 'ask 之后应立刻登记待答问题')
 
-  const ack = await hub.onCardAction({
+  const ack = hub.onCardAction({
     event: {
       operator: { open_id: 'ou_1' },
       action: { value: { dshq: pending.requestId, qid: 'q1', pick: ['方案 B'] } },
       context: { open_chat_id: 'oc_1' },
     },
   })
-  assert.equal(ack.toast.type, 'success')
-  assert.equal(ack.toast.content, '已收到：方案 B')
+  assert.equal(ack.toast, undefined, '答完不再回 toast，靠卡片原地刷新反馈')
+  assert.equal(ack.card.type, 'raw')
+  assert.equal(ack.card.data.header.title.content, '已选择')
+  assert.equal(ack.card.data.header.template, 'green')
+  assert.match(JSON.stringify(ack.card.data), /已选择：方案 B/)
 
   const result = await pendingResult
   assert.equal(result.ok, true)
   assert.deepEqual(result.value.answers, [{ id: 'q1', selected: ['方案 B'] }])
   assert.equal(hub.pendingFor('oc_1'), undefined, '答完必须清掉待答状态')
+})
+
+test('表单自由输入：空输入只提示，填了内容按 custom 结算', async () => {
+  const { hub } = makeHub()
+  const pendingResult = settled(hub.ask({ questions: single }, turn))
+  const pending = hub.pendingFor('oc_1')
+  const empty = hub.onCardAction({
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: { dshq: pending.requestId, qid: 'q1', input: 'dsh_input_0' }, form_value: { dsh_input_0: '   ' } },
+    },
+  })
+  assert.match(empty.toast.content, /请先输入内容/)
+  assert.ok(hub.pendingFor('oc_1'), '空输入不能结算')
+
+  const ack = hub.onCardAction({
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: { dshq: pending.requestId, qid: 'q1', input: 'dsh_input_0' }, form_value: { dsh_input_0: '都不合适，用方案 C' } },
+    },
+  })
+  assert.equal(ack.card.data.header.title.content, '已选择')
+  assert.match(JSON.stringify(ack.card.data), /你的输入：都不合适，用方案 C/)
+  const result = await pendingResult
+  assert.deepEqual(result.value.answers, [{ id: 'q1', selected: [], custom: '都不合适，用方案 C' }])
+})
+
+test('多题部分作答：返回「请选择」卡，题数与剩余表单都在', async () => {
+  const { hub } = makeHub()
+  const questions = [
+    { id: 'q1', question: '第一个？', options: [{ label: 'A' }, { label: 'B' }] },
+    { id: 'q2', question: '第二个？' },
+  ]
+  const pendingResult = settled(hub.ask({ questions }, turn))
+  const pending = hub.pendingFor('oc_1')
+  const ack = hub.onCardAction({
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: { dshq: pending.requestId, qid: 'q1', pick: ['A'] } },
+    },
+  })
+  assert.equal(ack.card.data.header.title.content, '请选择')
+  assert.match(JSON.stringify(ack.card.data), /等待选择（1\/2）/)
+  assert.match(JSON.stringify(ack.card.data), /dsh_input_1/, '未答的第二题仍要有输入框')
+  assert.ok(hub.pendingFor('oc_1'))
+  hub.cancel('oc_1', '测试结束')
+  await pendingResult
+})
+
+test('迟到点击：问题已结算时明确告知已结束', async () => {
+  const { hub } = makeHub()
+  const pendingResult = settled(hub.ask({ questions: single }, turn))
+  const pending = hub.pendingFor('oc_1')
+  const event = {
+    operator: { open_id: 'ou_1' },
+    action: { value: { dshq: pending.requestId, qid: 'q1', pick: ['方案 A'] } },
+  }
+  hub.onCardAction({ event })
+  await pendingResult
+  const late = hub.onCardAction({ event })
+  assert.equal(late.toast.type, 'info')
+  assert.match(late.toast.content, /已经结束/)
 })
 
 test('同一个会话里已有提问时，第二个提问直接拒绝', async () => {
@@ -84,17 +154,21 @@ test('文字作答：没有选项的问题记成 custom', async () => {
   assert.deepEqual(result.value.answers, [{ id: 'q1', selected: [], custom: '张三' }])
 })
 
-test('多个问题：逐条回答，全部答完才结算，并给一次回执', async () => {
+test('多个问题：逐条作答、卡片逐题刷新，全部答完才结算且不发回执文本', async () => {
   const { api, hub } = makeHub()
   const questions = [
     { id: 'q1', question: '第一个？', options: [{ label: 'A' }] },
     { id: 'q2', question: '第二个？' },
   ]
   const pendingResult = settled(hub.ask({ questions }, turn))
+  await new Promise((resolve) => setImmediate(resolve))
   assert.equal(hub.answerByText('oc_1', 'A'), true)
   assert.equal(hub.pendingFor('oc_1') !== undefined, true, '还有一题没答，不能结算')
-  assert.equal(api.calls.text.length, 1, '应回执「还有 1 个问题待回答」')
-  assert.match(api.calls.text[0].text, /还有 1 个问题/)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(api.calls.text.length, 0, '答题过程不再发「还有 N 个问题」文本，卡片会刷新')
+  assert.equal(api.calls.patch.length, 1, '答完第一题应原地刷新卡片')
+  assert.equal(api.calls.patch[0].card.header.title.content, '请选择')
+  assert.match(JSON.stringify(api.calls.patch[0].card), /等待选择（1\/2）/)
 
   assert.equal(hub.answerByText('oc_1', '随便'), true)
   const result = await pendingResult
@@ -102,6 +176,9 @@ test('多个问题：逐条回答，全部答完才结算，并给一次回执',
     { id: 'q1', selected: ['A'] },
     { id: 'q2', selected: [], custom: '随便' },
   ])
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(api.calls.patch.length, 2)
+  assert.equal(api.calls.patch[1].card.header.title.content, '已选择')
 })
 
 test('不是提问人本人点按钮：只回 toast，不结算', async () => {
@@ -131,17 +208,35 @@ test('过期/重复的卡片点击：只回 toast', async () => {
   assert.match(noValue.toast.content, /失效/)
 })
 
-test('超时：拒绝并给用户一条提示', async () => {
+test('超时：卡片翻成「选择超时」，不再另发文本', async () => {
   const { api, hub } = makeHub()
   const pendingResult = settled(hub.ask({ questions: single }, turn))
+  await new Promise((resolve) => setImmediate(resolve))
   const pending = hub.pendingFor('oc_1')
   hub.timeout(pending)
   const result = await pendingResult
   assert.equal(result.ok, false)
   assert.match(result.error.message, /没有回答/)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(api.calls.patch.length, 1)
+  assert.equal(api.calls.patch[0].messageId, 'om_card')
+  assert.equal(api.calls.patch[0].card.header.title.content, '选择超时')
+  assert.equal(api.calls.patch[0].card.header.template, 'grey')
+  assert.match(JSON.stringify(api.calls.patch[0].card), /等待超时/)
+  assert.equal(api.calls.text.length, 0, '卡片刷新成功就不补文本')
+  assert.equal(hub.pendingFor('oc_1'), undefined)
+})
+
+test('超时且卡片刷新失败：退回一条文本提示', async () => {
+  const api = fakeApi({ patchFails: true })
+  const hub = new QuestionHub({ api, log: silentLog, config: { askTimeoutMs: 60000 } })
+  const pendingResult = settled(hub.ask({ questions: single }, turn))
+  hub.timeout(hub.pendingFor('oc_1'))
+  const result = await pendingResult
+  assert.equal(result.ok, false)
+  await new Promise((resolve) => setImmediate(resolve))
   assert.equal(api.calls.text.length, 1)
   assert.match(api.calls.text[0].text, /提问已取消/)
-  assert.equal(hub.pendingFor('oc_1'), undefined)
 })
 
 test('dsh 侧中止（AbortSignal）：拒绝并清理状态', async () => {

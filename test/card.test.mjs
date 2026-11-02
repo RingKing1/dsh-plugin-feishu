@@ -70,12 +70,20 @@ test('中间态带 key 时出现停止按钮，终态不出现', () => {
   assert.equal(done.body.elements.some((element) => element.tag === 'button'), false)
 })
 
-test('paused 卡片橙色、备注在正文前、正文为空用等待占位', () => {
-  const card = buildCard({ status: 'paused', note: '已暂停' })
+test('paused 卡片橙色、备注只出现一次（正文为空不再叠占位）', () => {
+  const card = buildCard({ status: 'paused', note: '等你选择' })
   assert.equal(card.header.template, 'orange')
   assert.equal(card.header.title.content, '等你选择')
   assert.equal(card.config.streaming_mode, false)
-  assert.equal(card.body.elements[0].content, '已暂停\n\n（已暂停，等你先在选择题卡片上作答）')
+  assert.equal(card.body.elements[0].content, '等你选择')
+
+  const withBody = buildCard({ status: 'paused', body: '已经查到两步', note: '等你选择' })
+  assert.equal(withBody.body.elements[0].content, '等你选择\n\n已经查到两步')
+
+  const answered = buildCard({ status: 'answered', body: '已经查到两步' })
+  assert.equal(answered.header.template, 'grey')
+  assert.equal(answered.header.title.content, '已选择')
+  assert.equal(answered.body.elements[0].content, '已经查到两步')
 })
 
 test('clipText 不超限时原样返回', () => {

@@ -37,6 +37,49 @@ test('题目没有选项时仍然带一行文字作答提示', () => {
   assert.equal(card.elements[card.elements.length - 1].tag, 'note')
 })
 
+test('未答项带自由输入表单：input / form / form_submit 都有 name', () => {
+  const card = buildQuestionCard({ questions, requestId: 'r1' })
+  const form = card.elements.find((element) => element.tag === 'form')
+  assert.ok(form, '缺少自由输入表单')
+  assert.equal(form.name, 'dsh_form_0')
+  const input = form.elements.find((element) => element.tag === 'input')
+  assert.equal(input.name, 'dsh_input_0')
+  const submit = form.elements.find((element) => element.tag === 'button')
+  assert.equal(submit.name, 'dsh_submit_0')
+  assert.equal(submit.action_type, 'form_submit')
+  assert.deepEqual(submit.value, { dshq: 'r1', qid: 'q1', input: 'dsh_input_0' })
+})
+
+test('已答项只显示答案，不再出现按钮与表单', () => {
+  const card = buildQuestionCard({
+    questions,
+    requestId: 'r1',
+    status: 'done',
+    answers: new Map([['q1', { selected: ['方案 B'] }]]),
+  })
+  assert.equal(card.header.template, 'green')
+  assert.equal(card.header.title.content, '已选择')
+  assert.equal(card.elements.some((element) => element.tag === 'action'), false)
+  assert.equal(card.elements.some((element) => element.tag === 'form'), false)
+  assert.match(JSON.stringify(card), /已选择：方案 B/)
+  assert.match(JSON.stringify(card), /已全部作答（1\/1）/)
+})
+
+test('自定义输入：已答态展示「你的输入」，底部可附加超时说明', () => {
+  const card = buildQuestionCard({
+    questions,
+    requestId: 'r1',
+    status: 'timeout',
+    note: '没有等到你的回答',
+    answers: { q1: { selected: [], custom: '方案 C' } },
+  })
+  assert.equal(card.header.title.content, '选择超时')
+  assert.match(JSON.stringify(card), /你的输入：方案 C/)
+  const footer = card.elements[card.elements.length - 1]
+  assert.match(footer.elements[0].content, /没有等到你的回答/)
+  assert.match(footer.elements[0].content, /等待超时/)
+})
+
 test('多选题给出可多选的文字提示', () => {
   const card = buildQuestionCard({ questions: [{ id: 'q', question: '选哪些？', options: [{ label: 'x' }], multiSelect: true }], requestId: 'r' })
   const notes = card.elements.filter((element) => element.tag === 'note').map((element) => element.elements[0].content)
@@ -78,4 +121,24 @@ test('不是本插件的按钮（没有 dshq）返回 undefined', () => {
 test('pick 是字符串时归一化成数组', () => {
   const parsed = parseCardAction({ event: { action: { value: { dshq: 'r', qid: 'q', pick: 'A' } } } })
   assert.deepEqual(parsed.picks, ['A'])
+})
+
+test('解析表单提交：从 form_value 按 input name 取自定义答案并截断 200 字', () => {
+  const parsed = parseCardAction({
+    event: {
+      operator: { open_id: 'ou_user' },
+      action: {
+        value: { dshq: 'r1', qid: 'q1', input: 'dsh_input_0' },
+        form_value: { dsh_input_0: '  自己写的答案  ' },
+      },
+    },
+  })
+  assert.equal(parsed.fromForm, true)
+  assert.equal(parsed.customText, '自己写的答案')
+  assert.deepEqual(parsed.picks, [])
+
+  const long = parseCardAction({
+    event: { action: { value: { dshq: 'r', qid: 'q', input: 'i' }, formValue: { i: 'x'.repeat(300) } } },
+  })
+  assert.equal(long.customText.length, 200)
 })

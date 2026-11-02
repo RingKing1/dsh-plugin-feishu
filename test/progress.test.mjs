@@ -7,6 +7,7 @@ import {
   formatProgressBlock,
   formatProgressLine,
   summarizeToolArgs,
+  summarizeToolCall,
   trimProgressToBytes,
 } from '../lib/progress.js'
 
@@ -22,6 +23,29 @@ test('summarizeToolArgs 对非 JSON 与空值分别兜底', () => {
   assert.equal(summarizeToolArgs(''), '')
   assert.equal(summarizeToolArgs(undefined), '')
   assert.equal(summarizeToolArgs(42), '42')
+})
+
+test('summarizeToolCall：ask_user_question 只留题数与首题题干，不展开 JSON', () => {
+  const singleArgs = JSON.stringify({ questions: [{ id: 'q1', question: '用哪个方案？', options: [{ label: 'A' }, { label: 'B' }] }] })
+  const single = summarizeToolCall('ask_user_question', singleArgs)
+  assert.equal(single, '等待回答：用哪个方案？')
+  assert.equal(single.includes('{'), false)
+
+  const multi = summarizeToolCall('ask_user_question', {
+    questions: [
+      { id: 'q1', question: '第一个问题' },
+      { id: 'q2', question: '第二个问题' },
+    ],
+  })
+  assert.equal(multi, '等待回答（2 个问题）：第一个问题')
+
+  // 标题太长时截断，仍不输出参数结构
+  const long = summarizeToolCall('ask_user_question', { questions: [{ question: '长'.repeat(120) }] })
+  assert.ok(long.length <= 90)
+  assert.ok(long.endsWith('…'))
+
+  // 其它工具仍走通用摘要
+  assert.equal(summarizeToolCall('bash', '{"command":"ls -la"}'), 'ls -la')
 })
 
 test('clipOneLine 压成单行并保留首尾', () => {
