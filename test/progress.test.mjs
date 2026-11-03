@@ -155,3 +155,67 @@ test('trimProgressToBytes 从尾部保留并注明省略行数', () => {
   // 未超限时原样返回
   assert.equal(trimProgressToBytes('短内容', 100), '短内容')
 })
+
+test('旁白条目：单行化 + 200 字截断，渲染成 💬 旁白', () => {
+  const now = 1000
+  const tracker = new ProgressTracker({ now: () => now })
+  assert.equal(tracker.trackNarration({ text: '我先看一下\n这个文件' }), true)
+  assert.equal(tracker.entries.length, 1)
+  assert.equal(tracker.entries[0].kind, 'narration')
+  assert.equal(tracker.entries[0].detail, '我先看一下 这个文件')
+
+  const line = formatProgressLine(tracker.entries[0], now)
+  assert.ok(line.startsWith('💬 **旁白**'))
+  assert.ok(line.includes('我先看一下 这个文件'))
+
+  const long = new ProgressTracker({ now: () => now })
+  long.trackNarration({ text: 'x'.repeat(400) })
+  assert.ok(long.entries[0].detail.length <= 200)
+
+  // 空旁白不造条目：过程面板不该出现空行
+  assert.equal(tracker.trackNarration({ text: '   ' }), false)
+})
+
+test('旁白与思考在 off 模式下完全不记录', () => {
+  const tracker = new ProgressTracker({ mode: 'off' })
+  assert.equal(tracker.trackNarration({ text: '说话' }), false)
+  assert.equal(tracker.trackReasoning({ text: '思考' }), false)
+  assert.equal(tracker.entries.length, 0)
+})
+
+test('思考增量：同一步合并成一条，不逐字刷屏', () => {
+  const now = 5000
+  const tracker = new ProgressTracker({ now: () => now })
+  assert.equal(tracker.trackReasoning({ text: '先想', step: 1 }), true)
+  assert.equal(tracker.trackReasoning({ text: '一想', step: 1 }), true)
+  assert.equal(tracker.entries.length, 1)
+  const entry = tracker.entries[0]
+  assert.equal(entry.kind, 'reasoning')
+  assert.equal(entry.detail, '先想一想')
+  assert.ok(formatProgressLine(entry, now).startsWith('🧠 **思考**'))
+
+  // 换一步就是新条目
+  tracker.trackReasoning({ text: '第二步的思考', step: 2 })
+  assert.equal(tracker.entries.length, 2)
+})
+
+test('标题带「第 N 步」；步号未知时不加前缀', () => {
+  const tracker = new ProgressTracker({ now: () => 0 })
+  tracker.trackCall({ callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' })
+  tracker.trackResult({ callId: 'c1', ok: true })
+  assert.equal(tracker.noteStep(2), true)
+  assert.equal(tracker.noteStep(2), false)
+  assert.ok(tracker.title().startsWith('第 3 步 · 执行过程（'))
+
+  const unknown = new ProgressTracker({ now: () => 0 })
+  assert.equal(unknown.step, -1)
+  unknown.trackCall({ callId: 'c1', name: 'bash', arguments: '{}' })
+  assert.equal(unknown.title().startsWith('执行过程（'), true)
+})
+
+test('条目上限：超过 200 条只留最近的', () => {
+  const tracker = new ProgressTracker({ now: () => 0 })
+  for (let index = 0; index < 260; index += 1) tracker.trackNarration({ text: '旁白' + index })
+  assert.equal(tracker.entries.length, 200)
+  assert.equal(tracker.entries[tracker.entries.length - 1].detail, '旁白259')
+})

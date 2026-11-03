@@ -19,6 +19,12 @@ function makeApi() {
     async putCardContent(cardId, content, sequence) {
       calls.push(['putCardContent', cardId, content, sequence])
     },
+    async putProgress(cardId, markdown, sequence) {
+      calls.push(['putProgress', cardId, markdown, sequence])
+    },
+    async putProgressPanel(cardId, title, sequence) {
+      calls.push(['putProgressPanel', cardId, title, sequence])
+    },
     async closeStreaming(cardId, sequence, summary) {
       calls.push(['closeStreaming', cardId, sequence, summary])
     },
@@ -255,4 +261,110 @@ test('卡片还没建起来时 pauseForAsk 返回 false，由上层照常发问�
   await card.start()
   assert.equal(await card.pauseForAsk('已暂停'), false)
   assert.equal(card.closed, true)
+})
+
+// ---- 帧状态机接线（正文只发最终回复）----
+
+function startFrame(turn, step, attemptId, revision) {
+  return { type: 'start', attemptId: attemptId || 'a' + turn + step, revision: revision || 0, turn, step }
+}
+
+function deltaFrame(attemptId, text) {
+  return { type: 'chunk', attemptId, revision: 0, index: 0, time: 0, chunk: { type: 'text-delta', index: 0, text } }
+}
+
+function endFrame(attemptId) {
+  return { type: 'end', attemptId, revision: 0, index: 0, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 1 } }
+}
+
+test('onFrame 多步：finish 推送的正文只含最终回复，中间步进旁白', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  card.onFrame(startFrame(0, 0, 'att-1'))
+  card.onFrame(deltaFrame('att-1', '我先看一下文件'))
+  card.onFrame(endFrame('att-1'))
+  card.onFrame(startFrame(0, 1, 'att-2'))
+  card.onFrame(deltaFrame('att-2', '现在改代码'))
+  card.onFrame(endFrame('att-2'))
+  card.onFrame(startFrame(0, 2, 'att-3'))
+  card.onFrame(deltaFrame('att-3', '改好了，结论是没问题'))
+  card.onFrame(endFrame('att-3'))
+  await card.finish({ status: 'done' })
+
+  const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  const final = contents[contents.length - 1]
+  assert.equal(final, '改好了，结论是没问题')
+  // 中间步骤的旁白进过程面板，不再出现在正文里
+  const progress = api.calls.filter((call) => call[0] === 'putProgress').map((call) => call[2])
+  const panel = progress.join('\n')
+  assert.ok(panel.includes('我先看一下文件'))
+  assert.ok(panel.includes('现在改代码'))
+  assert.equal(final.includes('我先看一下文件'), false)
+})
+
+test('同步重试：废弃 attempt 的文本被清掉，不污染最终正文', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  card.onFrame(startFrame(0, 0, 'att-1', 0))
+  card.onFrame(deltaFrame('att-1', '这是要被丢弃的半截'))
+  card.onFrame(startFrame(0, 0, 'att-2', 1))
+  card.onFrame(deltaFrame('att-2', '真正的回答'))
+  card.onFrame(endFrame('att-2'))
+  await card.finish({ status: 'done' })
+
+  const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  assert.equal(contents[contents.length - 1], '真正的回答')
+})
+
+test('正文清空时不推空串：占位文本顶上（飞书拒空 content）', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  card.setText('')
+  await card.flushNow()
+  const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  assert.equal(contents[contents.length - 1], '正在继续…')
+  assert.equal(contents.includes(''), false)
+})
+
+test('末步为空：finish 回落到上一步的文本，卡片不留白', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  card.onFrame(startFrame(0, 0, 'att-1'))
+  card.onFrame(deltaFrame('att-1', '先说一句'))
+  card.onFrame(endFrame('att-1'))
+  card.onFrame(startFrame(0, 1, 'att-2'))
+  card.onFrame({ type: 'end', attemptId: 'att-2', revision: 0, index: 0, outcome: { kind: 'abandoned' } })
+  await card.finish({ status: 'done' })
+
+  const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  assert.equal(contents[contents.length - 1], '先说一句')
+})
+
+test('max-tokens 截断：收尾备注里说明被截断', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  card.onFrame(startFrame(0, 0, 'att-1'))
+  card.onFrame(deltaFrame('att-1', '说到一半'))
+  card.onFrame({ type: 'chunk', attemptId: 'att-1', revision: 0, index: 1, time: 0, chunk: { type: 'finish', reason: { type: 'max-tokens' } } })
+  card.onFrame(endFrame('att-1'))
+  await card.finish({ status: 'done' })
+
+  const updated = api.calls.filter((call) => call[0] === 'updateCard').map((call) => call[2])
+  const note = JSON.stringify(updated[updated.length - 1])
+  assert.ok(note.includes('长度上限'))
+})
+
+test('finish 会把折叠面板标题一起同步（关流后改不动了）', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  card.progress.trackCall({ callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' })
+  card.progress.trackResult({ callId: 'c1', ok: true })
+  card.progress.noteStep(1)
+  await card.finish({ status: 'done' })
+  const panel = api.calls.filter((call) => call[0] === 'putProgressPanel').at(-1)
+  assert.ok(panel[2].startsWith('第 2 步 · 执行过程'))
+  const update = api.calls.find((call) => call[0] === 'updateCard')
+  assert.equal(update[2].body.elements.find((element) => element.element_id === 'progress_panel').header.title.content, panel[2])
 })
