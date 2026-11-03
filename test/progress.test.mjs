@@ -219,3 +219,12 @@ test('条目上限：超过 200 条只留最近的', () => {
   assert.equal(tracker.entries.length, 200)
   assert.equal(tracker.entries[tracker.entries.length - 1].detail, '旁白259')
 })
+
+test('tool/result 的 callId 落在 message.toolCallId 上，也要能结算', () => {
+  // dsh 的 tool/result 载荷是 ToolMessage：只认 message.callId 会让所有行永远停在 ⏳
+  const tracker = new ProgressTracker({ now: () => 0 })
+  tracker.trackCall({ callId: 'call_1', name: 'bash', arguments: '{"command":"ls"}' })
+  assert.equal(tracker.trackResult({ message: { role: 'tool', toolCallId: 'call_1', isError: false } }), true)
+  assert.equal(tracker.entries[0].ok, true)
+  assert.ok(tracker.render().startsWith('✅'), '结算后应渲染成 ✅，而不是 ⏳')
+})

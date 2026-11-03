@@ -97,3 +97,14 @@ test('clipText 超限时截断并带省略标记', () => {
   assert.equal(result.length, 100)
   assert.ok(result.endsWith(TRUNCATED_MARK))
 })
+
+test('过程面板：清单还空着时也要建出元件（否则后续推送全被 400 拒）', () => {
+  const card = buildCard({ status: 'running', body: '', streaming: true, progress: '', progressEnabled: true })
+  const panel = card.body.elements.find((element) => element.element_id === 'progress_panel')
+  assert.ok(panel, 'progressEnabled 为真时必须留出面板元件')
+  assert.equal(panel.elements[0].element_id, 'progress')
+  assert.equal(panel.elements[0].content, ' ', '飞书不接受空 content，用空格占位')
+
+  const off = buildCard({ status: 'running', body: '' })
+  assert.equal(off.body.elements.some((element) => element.element_id === 'progress_panel'), false)
+})

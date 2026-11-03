@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.2
+
+### 修正：执行过程只显示一条（建卡时没留元件，后续推送全被 400 拒）
+
+线上实测（真 api 建卡、回放一轮 6 个工具调用的真实会话）发现三个叠加缺陷：
+
+- **建卡时清单还是空的就不建过程面板**。CardKit 只能更新已存在的 `element_id`，
+  建卡后每次 `PUT /elements/progress/content` 都返回
+  `not find elementID : progress`（一轮里失败 43 次）。面板因此定格在建卡那一刻的
+  内容上——通常只有第一条工具，标题也永远停在「执行过程」。
+  现在 `progressMode ≠ off` 时始终建出面板元件（清单为空用单个空格占位）。
+- **`tool/result` 的 callId 取错字段**。dsh 的载荷是 `ToolMessage`，id 在
+  `message.toolCallId`；只认 `message.callId` 导致**所有行永远停在 ⏳**，
+  收尾后也看不到 ✅ 与耗时。
+- **正文与过程并发写入导致 `sequence number compare failed`**。飞书按 sequence
+  严格递增校验整卡更新，两个刷新只要交错一次，后来的请求就被拒。现在所有卡片写入
+  排进同一条串行队列。
+
+另外把「有没有结束」的判断从真值改成 `!== undefined`，假时钟从 0 起时不再把已结束的行渲染成 ⏳。
+
+测试 250 → 254。
+
 ## 0.6.1
 
 ### 修正：工具执行期间卡片停在一句「正在继续…」

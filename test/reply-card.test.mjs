@@ -4,6 +4,9 @@ import { ReplyCard } from '../lib/reply-card.js'
 
 const silentLog = { debug() {}, info() {}, warn() {}, error() {} }
 
+/** 正文元件（过程面板启用时会排在它前面，不能再用 elements[0] 盲取） */
+const contentOf = (card) => card.body.elements.find((element) => element.element_id === 'content').content
+
 function makeApi() {
   const calls = []
   return {
@@ -105,7 +108,7 @@ test('finish 关流式并把 header 换成终态', async () => {
   assert.ok(close)
   const update = api.calls.find((call) => call[0] === 'updateCard')
   assert.equal(update[2].header.template, 'green')
-  assert.equal(update[2].body.elements[0].content, '最终答案')
+  assert.equal(contentOf(update[2]), '最终答案')
 })
 
 test('建卡失败时不抛错，finish 返回 false 供上层兜底', async () => {
@@ -139,7 +142,7 @@ test('finish 带 note 且无正文时用 note 作为终态正文', async () => {
   assert.equal(ok, true)
   const update = api.calls.find((call) => call[0] === 'updateCard')
   assert.equal(update[2].header.template, 'red')
-  assert.equal(update[2].body.elements[0].content, '执行失败：超时')
+  assert.equal(contentOf(update[2]), '执行失败：超时')
 })
 
 test('dispose 后不再推送', async () => {
@@ -210,8 +213,8 @@ test('pauseForAsk 定格成橙色「等你选择」并关闭本卡', async () =>
 
   const update = api.calls.find((call) => call[0] === 'updateCard')
   assert.equal(update[2].header.template, 'orange')
-  assert.ok(update[2].body.elements[0].content.includes('等你选择'))
-  assert.equal(update[2].body.elements[0].content, '等你选择\n\n说到一半', '备注与正文各出现一次，不能重复' )
+  assert.ok(contentOf(update[2]).includes('等你选择'))
+  assert.equal(contentOf(update[2]), '等你选择\n\n说到一半', '备注与正文各出现一次，不能重复' )
   // 定格后停止按钮仍在：用户可以直接放弃这轮
   assert.ok(update[2].body.elements.some((element) => element.tag === 'button'))
 
@@ -235,7 +238,7 @@ test('markAnswered：把已关闭的暂停卡原地翻成灰色「已选择」',
   const final = updates[updates.length - 1][2]
   assert.equal(final.header.template, 'grey')
   assert.equal(final.header.title.content, '已选择')
-  assert.equal(final.body.elements[0].content, '已经说到一半')
+  assert.equal(contentOf(final), '已经说到一半')
   assert.equal(final.body.elements.some((element) => element.tag === 'button'), false, '终态不再给停止按钮')
 })
 
@@ -249,7 +252,7 @@ test('settlePaused：取消时把暂停卡翻成灰色「已停止」并带说�
   const final = updates[updates.length - 1][2]
   assert.equal(final.header.template, 'grey')
   assert.equal(final.header.title.content, '已停止')
-  assert.equal(final.body.elements[0].content, '提问已结束')
+  assert.equal(contentOf(final), '提问已结束')
 })
 
 test('卡片还没建起来时 pauseForAsk 返回 false，由上层照常发问题卡', async () => {
@@ -406,4 +409,27 @@ test('finish 会把折叠面板标题一起同步（关流后改不动了）', a
   assert.ok(panel[2].startsWith('第 2 步 · 执行过程'))
   const update = api.calls.find((call) => call[0] === 'updateCard')
   assert.equal(update[2].body.elements.find((element) => element.element_id === 'progress_panel').header.title.content, panel[2])
+})
+
+test('建卡时就带上过程面板，第一次推送才落得上去', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  const created = api.calls.find((call) => call[0] === 'createCard')[1]
+  const panel = created.body.elements.find((element) => element.element_id === 'progress_panel')
+  assert.ok(panel, '建卡时没留面板元件，后面的 putProgress 会全部 400')
+})
+
+test('并发写入串行化：sequence 严格递增，不会出现倒序被飞书拒', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' })
+  card.setText('第一段')
+  // 两拍并发：正文与过程各自入队
+  await Promise.all([card.flush(), card.flushProgress()])
+  const sequences = api.calls.filter((call) => typeof call[3] === 'number').map((call) => call[3])
+  for (let index = 1; index < sequences.length; index += 1) {
+    assert.ok(sequences[index] > sequences[index - 1], 'sequence 必须严格递增：' + sequences.join(','))
+  }
 })
