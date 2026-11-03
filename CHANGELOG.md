@@ -58,4 +58,7 @@
 
 ## 0.5.4
 
-（此前版本见 git history）
+- 注册飞书会话判据（新增 `lib/feishu-agent.js`），`/learn` 等能力可识别飞书发起的会话。
+- README 补充说明，配套测试。
+
+（更早版本见 git history）
