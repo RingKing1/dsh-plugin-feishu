@@ -72,9 +72,9 @@ test('多步：上一步文本变旁白，正文只留末步', () => {
   assert.deepEqual(narrations, ['我先看一下文件', '现在跑测试'])
   assert.equal(stream.text(), '改完了，结论是没问题')
   assert.equal(stream.finalText(), '改完了，结论是没问题')
-  // 每次进入新 attempt 都要 reset（首步也 reset，正文本来就是空的，幂等），
-  // 否则上一步的尾部会留在正文里
-  assert.equal(actions.filter((action) => action.kind === 'reset').length, 3)
+  // 切步刻意不发 reset：卡片上的旧文本要留到新一步真的开口为止，
+  // 否则「工具正在跑」的几十秒里正文会变成一句占位
+  assert.equal(actions.filter((action) => action.kind === 'reset').length, 0)
   assert.deepEqual(actions.filter((action) => action.kind === 'step').map((action) => action.step), [0, 1, 2])
 })
 

@@ -323,8 +323,47 @@ test('正文清空时不推空串：占位文本顶上（飞书拒空 content）
   card.setText('')
   await card.flushNow()
   const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
-  assert.equal(contents[contents.length - 1], '正在继续…')
+  assert.equal(contents[contents.length - 1], '正在处理…')
   assert.equal(contents.includes(''), false)
+})
+
+test('执行中的占位直接报正在跑的工具，不是干巴巴一句「正在处理」', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"ls -la"}' })
+  await card.flushNow()
+  const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  assert.equal(contents[contents.length - 1], '⏳ 正在执行 bash ls -la…')
+
+  // 工具跑完、模型还没开口：退回通用占位
+  card.trackToolResult({ callId: 'c1', ok: true })
+  card.setText('')
+  await card.flushNow()
+  const after = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  assert.equal(after[after.length - 1], '正在处理…')
+})
+
+test('切步不清空正文：工具执行期间上一步的文字还在，新步开口才替换', async () => {
+  const api = makeApi()
+  const card = makeCard(api)
+  await card.start()
+  const startFrame = (step, attemptId) => ({ type: 'start', attemptId, revision: 0, turn: 0, step })
+  const chunkFrame = (attemptId, body) => ({ type: 'chunk', attemptId, revision: 0, index: 0, chunk: body })
+
+  card.onFrame(startFrame(0, 'a0'))
+  card.onFrame(chunkFrame('a0', { type: 'text-delta', index: 0, text: '第一步的旁白' }))
+  card.onFrame({ type: 'end', attemptId: 'a0', revision: 0, index: 0, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 1 } })
+
+  // 进入第二步（工具要跑一阵）：正文不能被清成占位
+  card.onFrame(startFrame(1, 'a1'))
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"npm test"}' })
+  await card.flushNow()
+  assert.equal(card.bodyText(), '第一步的旁白')
+
+  // 第二步开口：整段换成第二步的内容，不接在旧文本后面
+  card.onFrame(chunkFrame('a1', { type: 'text-delta', index: 0, text: '最终结论' }))
+  assert.equal(card.bodyText(), '最终结论')
 })
 
 test('末步为空：finish 回落到上一步的文本，卡片不留白', async () => {
