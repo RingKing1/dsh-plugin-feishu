@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-feishu",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "DSH（DeepSeek Harness）插件：把 dsh 会话接进飞书 / Lark 长连接，卡片流式回复",
   "type": "module",
   "main": "lib/index.js",

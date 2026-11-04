@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.0
+
+### 新增：子agent 异步完成后，主 agent 的唤醒轮回复也能回到飞书
+
+主 agent 起一个长活子agent 后先结束本轮；子agent 跑完时 DSH 会把主 agent 唤醒（`parent.followup`）
+处理结果——这一段回复以前**到不了飞书**（过程在 Web GUI 里看得到，飞书侧完全没输出，用户只能等下次
+主动提问才知道）。原因是插件的推卡资格由 `expectTurn` 决定，而 `onIdle` 在上一轮结束时已经把它删了，
+于是唤醒轮的流式帧、执行过程、收尾三道闸门全部直接返回。
+
+现在：
+
+- 新增 `agent/inbox/claimed` 监听（`lib/agents.js` 的 `attach()`，与既有的 assistant-stream / status /
+  error 三个常驻监听同处一地）。**白名单**只认 `message.source.kind` 为 `subagent-settled`
+  （子agent 跑完的汇总）与 `agent-message`（子agent 中途主动发消息）两种，其余（含 `user`、未知 kind）
+  一律 fall through 不认领——网页端在同一会话里起的轮次仍然不会凭空多出一张飞书卡。
+- 选 `claimed` 而不是 `inserted`：`inserted` 之后消息还可能被 `/stop` 清掉，认领了却没有轮次会残留到下一轮；
+  `claimed` 表示「轮次已开、消息真的被取进这一步」，且带 `turn` 号。
+- `expectTurn` 从 `Set<string>` 改成 `Map<key, { turns: Set<number>, wildcard, title }>`：
+  唤醒轮按 **turn 号**放行，同一会话里别的入口的轮次不能搭车出卡；飞书入站投递仍是无 turn 号的
+  通配认领，由首帧定型。`onIdle` 依旧按会话键清理——`agent/status` 的 `idle` 语义是「没有驱动在排队或运行」
+  （`dsh-agent-loop/lib/index.js` 的 `kick()` 用 `while (await this.turn())` 在同一个驱动里接着跑排队轮次），
+  所以它只在整条会话静下来时才触发，不会出现「一轮结束把另一轮的资格删掉」。
+- 唤醒轮新开一张卡，标题 `子agent 回来了 · <子agent 会话 id 前 6 位>`；形态与入站卡一致（执行过程面板、
+  停止按钮、结束转终态）。**同一时刻最多一张活卡**：若这一轮到来时入站轮还在跑（情况 1），按原行为并入
+  那张卡，不新开。
+
+已知边界：`source.kind` 只说明「谁叫醒了主 agent」，不区分这个子agent 是飞书起的还是网页端起的，
+所以网页端起的长活子agent 结束后同样会收到一张卡。要区分得再引入「子agent 来源」判据（见需求文档 V7）。
+
+测试 254 → 261（新增 `test/bridge-wake.test.mjs`：唤醒轮开卡、turn 号隔离、Web 端不误伤、无会话记录不认领、
+情况 1 不回归、错误路径、idle 早于 claimed 不残留）。
+
 ## 0.6.2
 
 ### 修正：执行过程只显示一条（建卡时没留元件，后续推送全被 400 拒）

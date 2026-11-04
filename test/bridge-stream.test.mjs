@@ -16,9 +16,11 @@ function fakeBridge(options) {
     trackToolResult: (data) => calls.push(['result', data]),
   }
   const bridge = Object.create(FeishuBridge.prototype)
-  bridge.expectTurn = new Set(settings.expectTurn === false ? [] : ['oc_1'])
+  bridge.expectTurn = new Map()
   bridge.cards = new Map(settings.noCard ? [] : [['oc_1', card]])
   bridge.agents = { live: new Map(settings.noAgent ? [] : [['oc_1', { sessionId: 'sess_1' }]]) }
+  // 入站认领（wildcard）：此刻还没有 turn 号，由首帧定型
+  if (settings.expectTurn !== false) bridge.armTurn('oc_1')
   return { bridge, calls }
 }
 
@@ -73,7 +75,7 @@ test('onFrame：start 帧保证有卡并调 start，其余帧只转给已有卡'
   bridge.onFrame('oc_1', start)
   assert.deepEqual(calls, [['start'], ['frame', start]])
 
-  const chunk = { type: 'chunk', attemptId: 'a1', revision: 0, index: 0, chunk: { type: 'text-delta', index: 0, text: 'hi' } }
+  const chunk = { type: 'chunk', attemptId: 'a1', revision: 0, turn: 0, index: 0, chunk: { type: 'text-delta', index: 0, text: 'hi' } }
   bridge.onFrame('oc_1', chunk)
   assert.deepEqual(calls.slice(2), [['frame', chunk]])
 })
@@ -84,7 +86,7 @@ test('onFrame：不在等待结果的会话、没有卡片时都不做事', () =
   assert.deepEqual(idle.calls, [])
 
   const noCard = fakeBridge({ noCard: true })
-  noCard.bridge.onFrame('oc_1', { type: 'chunk', chunk: { type: 'text-delta', text: 'x' } })
+  noCard.bridge.onFrame('oc_1', { type: 'chunk', turn: 0, chunk: { type: 'text-delta', text: 'x' } })
   assert.deepEqual(noCard.calls, [])
   // 没有卡片时 chunk 帧不建卡（避免流末尾凭空多一张空卡）
   assert.equal(noCard.bridge.cards.size, 0)
