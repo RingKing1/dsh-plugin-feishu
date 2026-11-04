@@ -38,8 +38,12 @@ jobs:
 
       - run: npm ci
 
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; the runner ships 10.x.
+      - name: Upgrade npm
+        run: npm install -g npm@11
+
       # prepublishOnly runs the test suite, so a failing test blocks the release.
+      # No token: the OIDC id-token above authenticates against the Trusted Publisher
+      # configured for this repo on npmjs.com.
       - name: Publish
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
