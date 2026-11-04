@@ -32,7 +32,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "node --test test/*.test.mjs"
   },
   "keywords": [
     "deepseek-harness",
@@ -53,6 +54,10 @@
   "homepage": "https://github.com/suveng/dsh-plugin-feishu",
   "bugs": {
     "url": "https://github.com/suveng/dsh-plugin-feishu/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.5",
