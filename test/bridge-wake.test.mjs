@@ -41,6 +41,7 @@ function fakeBridge(options) {
   bridge.awaitingReactions = new Map()
   bridge.reactions = { settle: () => Promise.resolve() }
   bridge.log = { debug() {}, info() {}, warn() {}, error() {} }
+  bridge.trace = () => {}
   bridge.newCard = (key, title) => {
     const card = makeCard(calls, title)
     calls.push(['newCard', key, title])
@@ -52,7 +53,9 @@ function fakeBridge(options) {
 }
 
 const startFrame = (turn) => ({ type: 'start', attemptId: 'a1', revision: 0, turn, step: 0 })
-const chunkFrame = (turn) => ({ type: 'chunk', attemptId: 'a1', revision: 0, turn, index: 0, chunk: { type: 'text-delta', index: 0, text: 'x' } })
+// 真实帧形态：只有 start 帧带 turn / step，chunk 与 end 只带 attemptId（见 dsh 的 AssistantStreamAttempt）
+const chunkFrame = () => ({ type: 'chunk', attemptId: 'a1', revision: 1, index: 0, chunk: { type: 'text-delta', index: 0, text: 'x' } })
+const endFrame = () => ({ type: 'end', attemptId: 'a1', revision: 2, index: 1, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 1 } })
 const claimed = (turn, kind, senderSessionId) => ({
   message: { source: { kind, senderSessionId, form: 'notice' } },
   turn,
@@ -90,7 +93,7 @@ test('A1 唤醒轮开卡：子agent 完成后主 agent 被唤醒，帧进新卡�
     ['newCard', KEY, '子agent 回来了 · abc123'],
   ])
 
-  bridge.onFrame(KEY, chunkFrame(7))
+  bridge.onFrame(KEY, chunkFrame())
   assert.equal(wake.frames.length, 2)
 
   bridge.onIdle(KEY)
@@ -105,7 +108,7 @@ test('A1b 唤醒轮只放行自己那个 turn：其它轮次的帧不能搭车�
   bridge.onClaimed(KEY, claimed(7, 'agent-message', 'zzz999'))
   // 网页端在同一会话里开的另一轮（turn 9）：认出但必须丢掉
   bridge.onFrame(KEY, startFrame(9))
-  bridge.onFrame(KEY, chunkFrame(9))
+  bridge.onFrame(KEY, chunkFrame())
   assert.equal(bridge.cards.size, 0)
   assert.deepEqual(calls.filter((c) => c[0] === 'newCard'), [])
 
@@ -118,7 +121,7 @@ test('A2 不误伤 Web 端：source.kind=user 的轮次不认领、不出卡', (
   bridge.onClaimed(KEY, claimed(3, 'user'))
   assert.equal(bridge.expectTurn.size, 0)
   bridge.onFrame(KEY, startFrame(3))
-  bridge.onFrame(KEY, chunkFrame(3))
+  bridge.onFrame(KEY, chunkFrame())
   assert.equal(bridge.cards.size, 0)
   assert.deepEqual(calls, [])
 
@@ -134,6 +137,42 @@ test('A2b 没有飞书会话记录时不认领（不知道往哪个会话发）'
   assert.equal(bridge.expectTurn.size, 0)
 })
 
+test('卡片标题优先用姓名，拿不到姓名才退回 open_id 尾号', () => {
+  const of = FeishuBridge.prototype.titleOf
+  const p2p = { chatType: 'p2p', senderOpenId: 'ou_796c4cf9a10578e787c004fa40dddce1' }
+  assert.equal(of(p2p, '苏文广'), '飞书 · 苏文广')
+  assert.equal(of(p2p, ''), '飞书 · dddce1')
+  assert.equal(of({ chatType: 'group', chatId: 'oc_1' }, undefined), '飞书群聊 · oc_1')
+})
+
+test('A1c 回归：chunk/end 帧不带 turn（dsh 只给 start 帧带），正文必须照常进卡', () => {
+  const { bridge } = fakeBridge()
+  bridge.armTurn(KEY)
+  bridge.onFrame(KEY, startFrame(1))
+  const card = bridge.cards.get(KEY)
+
+  bridge.onFrame(KEY, chunkFrame())
+  bridge.onFrame(KEY, chunkFrame())
+  bridge.onFrame(KEY, endFrame())
+
+  assert.equal(card.frames.length, 4, 'start + 2 chunk + end 全都要转给卡片；0.7.0 曾全部按 turn=NaN 丢掉')
+  assert.deepEqual(card.frames.slice(1).map((f) => f.type), ['chunk', 'chunk', 'end'])
+})
+
+test('A1d 别的 attempt 的尾帧不能写进当前卡', () => {
+  const { bridge } = fakeBridge()
+  bridge.armTurn(KEY)
+  bridge.onFrame(KEY, startFrame(1))
+  const card = bridge.cards.get(KEY)
+
+  // 上一轮/被重试丢弃那次 attempt 的 chunk 与 end 混进来
+  bridge.onFrame(KEY, { ...chunkFrame(), attemptId: 'a0' })
+  bridge.onFrame(KEY, { ...endFrame(), attemptId: 'a0' })
+  bridge.onFrame(KEY, endFrame())
+
+  assert.deepEqual(card.frames.map((f) => f.attemptId), ['a1', 'a1'])
+})
+
 test('A3 情况 1 不回归：入站轮进行中收到子agent 消息，并入同一张卡', () => {
   const { bridge, calls } = fakeBridge()
   bridge.armTurn(KEY)
@@ -144,7 +183,7 @@ test('A3 情况 1 不回归：入站轮进行中收到子agent 消息，并入�
   // 主 agent 还没结束，子agent 先完成：next-turn 被同一驱动接着跑
   bridge.onClaimed(KEY, claimed(1, 'subagent-settled', 'abc123'))
   bridge.onFrame(KEY, startFrame(1))
-  bridge.onFrame(KEY, chunkFrame(1))
+  bridge.onFrame(KEY, chunkFrame())
 
   assert.equal(bridge.cards.size, 1)
   assert.equal(bridge.cards.get(KEY), inbound)

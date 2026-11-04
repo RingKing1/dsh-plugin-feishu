@@ -99,8 +99,9 @@ test('describeConfig 不泄露 appSecret', () => {
 })
 
 test('姓名解析默认关闭，只有显式 true 才开', () => {
-  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b' }, {}).resolveSenderName, false)
-  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: 'yes' }, {}).resolveSenderName, false)
+  // 默认开启：权限没开时 resolveSenderName() 自己退化成 open_id 尾号，不报错
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b' }, {}).resolveSenderName, true)
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: false }, {}).resolveSenderName, false)
   assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: true }, {}).resolveSenderName, true)
 })
 

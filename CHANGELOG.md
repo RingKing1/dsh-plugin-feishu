@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.7.1
+
+### 修正：0.7.0 的卡片正文全空（所有轮次，不只唤醒轮）
+
+0.7.0 为了「只放行唤醒轮，不让网页端的轮次搭车出卡」，在 `onFrame` 里按 `frame.turn` 做归属判断。
+但 dsh 的 `AssistantStreamAttempt` **只在 `start` 帧写 `turn` / `step`**，`chunk` 与 `end` 帧只有
+`attemptId` / `revision` / `index`（`dsh-agent-loop/lib/index.js:387-441`）。于是 `Number(undefined) = NaN`，
+第一帧定型后**所有正文增量与收尾帧全被丢掉**，卡片只留建卡时的占位符，收尾时 `finish({status:'done'})`
+拿到空正文 —— 线上 trace 实测 10942 个 chunk + 9 个 end 帧全部 drop。
+
+现在：
+
+- `start` 帧按 `turn` 号放行，并记下这次 attempt 的 `attemptId`；
+- `chunk` / `end` 帧不再看 turn，改为「这一轮已开过卡 + `attemptId` 对得上」才放行（上一次被丢弃的
+  attempt 的尾帧不会写进当前卡）；
+- 回归用例 `A1c`（chunk/end 不带 turn 必须进卡）与 `A1d`（别的 attempt 的尾帧不许混入）按**线上真实帧形态**
+  写 fixture；此前的 fixture 给 chunk 帧塞了 `turn: 0`，所以单测没拦住这个回归。
+
+### 修正：提问人姓名又变回 open_id 尾号
+
+`resolveSenderName` 原来是 opt-in（`=== true`），profile 配置一旦被重建/漏写就静默退化。
+现在默认开启（`!== false`，仍可在插件页关掉）：解析失败（没开 `contact:user.base:readonly`
+或查不到人）只会在消息首行退化成 open_id 尾号，不报错、不拖慢投递，同一 open_id 缓存 10 分钟。
+顺手把**卡片标题**也接上了解析结果：`飞书 · 苏文广`，拿不到姓名才退回 `飞书 · dddce1`（原来标题永远是尾号，
+姓名只出现在消息首行前缀里）。
+
+### 新增：可选的链路追踪（`debug: true` 时才有 IO）
+
+`lib/trace.js` + `reply-card.js` 埋点：`deliver` / `arm` / `claimed` / `frame-drop` / `frame-start` /
+`idle` / `finish` / `card-start` / `flush-ok` / `flush-failed` 等事件按 JSONL 追加到
+`~/.dsh/feishu/trace.log`（超过 2MB 自动 truncate）。关掉 debug 时不产生任何 IO。
+
+测试 261 → 263。
+
 ## 0.7.0
 
 ### 新增：子agent 异步完成后，主 agent 的唤醒轮回复也能回到飞书

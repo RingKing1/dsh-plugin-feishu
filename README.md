@@ -66,7 +66,7 @@ FeishuBridge ── 归一化/去重/白名单 ── 每会话串行队列
    | `im:message:send_as_bot`（以应用身份发消息） | 发卡片与文本回复 |
    | `im:chat:readonly`（获取群组信息） | 读取群 / 话题会话信息 |
    | `im:message.p2p_msg:readonly` | 接收单聊消息 |
-   | `contact:user.base:readonly`（可选） | 把提问人姓名显示在消息首行（`resolveSenderName=true` 才需要；没开也能用，只是首行显示 open_id 尾号） |
+   | `contact:user.base:readonly`（建议开） | 把提问人姓名显示在消息首行；没开也能用，只是首行显示 open_id 尾号 |
 
    群里**不 @ 机器人也要响应**时，额外开「获取群组中所有消息」（`im:message.group_msg`），
    并把插件配置 `requireMentionInGroup` 设为 `false`。
@@ -193,7 +193,7 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `includeQuotedMessage` | `true` | 回复某条消息时是否展开被引用内容 |
 | `quotedMessageMaxChars` | `8000` | 引用内容最多展开多少字符（100 ~ 50000），超出截断并注明 |
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
-| `resolveSenderName` | `false` | 是否调通讯录接口把提问人姓名放进消息首行。开了需要 `contact:user.base:readonly` 权限，且每个提问人 10 分钟内只查一次 |
+| `resolveSenderName` | `true` | 是否调通讯录接口把提问人姓名放进消息首行（需要 `contact:user.base:readonly` 权限；没权限时自动退化成 open_id 尾号）。每个提问人 10 分钟内只查一次；关掉可省这次请求 |
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
 | `approvalCode` | 空（未配置） | 飞书审批定义号（`approval_code`）：模型调用提交工具时用它建单。留空 = 未配置，工具明确返回失败，不发空请求 |
 | `approvalWidgetId` | 空（自动） | 审批表单里接收正文的控件 id；留空 = 自动挑（多行文本优先，其次单行文本）。审批定义有多个控件、自动挑错时才填 |
