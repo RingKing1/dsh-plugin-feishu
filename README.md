@@ -197,7 +197,9 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
 | `approvalCode` | 空（未配置） | 飞书审批定义号（`approval_code`）：模型调用提交工具时用它建单。留空 = 未配置，工具明确返回失败，不发空请求 |
 | `approvalWidgetId` | 空（自动） | 审批表单里接收正文的控件 id；留空 = 自动挑（多行文本优先，其次单行文本）。审批定义有多个控件、自动挑错时才填 |
-| `debug` | `false` | 输出调试日志（含去重、忽略原因） |
+| `debug` | `false` | 输出调试日志（含去重、忽略原因）；同时决定 debug 级是否落盘 |
+| `logDir` | `~/.dsh/logs` | 日志文件目录。按天分文件（`feishu-2026-11-05.log`），单文件超限滚动保留 3 份；info/warn/error 无条件落盘 |
+| `logMaxBytes` | `0` | 单个日志文件上限（字节），超出滚动；`0` = 用默认 10MB |
 
 飞书里新建的会话用的是 **profile 的默认模型**（`agent-default-model` 条目的 `provider`/`model`，
 DSH 里选过一次模型就会记在这里）。dsh 0.2 起新 agent 必须带模型选择，插件在 `create` / `resume`
@@ -323,7 +325,8 @@ lib/question-card.js  选择题卡片 JSON 与回调解析（纯函数）
 lib/approval.js       飞书审批应用：建单 / 查单、状态映射、表单控件解析
 lib/tools.js          飞书工具（身份 / 发消息 / 审批提交与查询）定义与注册
 lib/queue.js          每会话串行队列
-lib/log.js            统一日志
+lib/log.js            统一日志（宿主 + 按天落盘 / 滚动）
+lib/card-registry.js  在册卡片（崩溃后启动清扫残留的「回复中」卡片）
 ```
 
 ## 限制

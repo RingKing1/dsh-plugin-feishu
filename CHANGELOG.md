@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.7.2
+
+按 `feishu-feature-report.md` 的 P0 修「卡片假活」：一张卡建好就再也不动，进程崩了也没人管。
+
+### NFR-1 卡片存活感知
+
+- **建卡竞态**：建卡请求还没返回时到达的工具调用 / 文本，原来被 `schedule()` 直接丢掉
+  （`if (!this.cardId) return`），而 `doStart()` 只在有正文时才补刷新 —— 纯工具轮次因此
+  「一张卡建好就冻住」。现在用 `pendingFlush` 记账，建卡成功后补排期。
+- **心跳**：新增 15 秒心跳与顶部状态行（`element_id: status`），
+  `⏳ 回复中 · 第 N 步 · bash pnpm build · 已用 12:11`。没有新事件也自己走字，
+  飞书那侧「一动不动 = 卡死」的观感消失。
+
+### NFR-2 终态兜底与自愈
+
+- **收尾重试**：正文 / 过程 / 关流 / 终态卡片全部改走 `attempt()`（3 次，300/600/1200ms 退避）。
+  以前一次超时就把卡片永久留在「回复中」。
+- **巡检**：bridge 每 60 秒扫 `liveCards`，超过 3 分钟没有任何成功写入的卡片强制翻成
+  「⛔ 已中断」。
+- **启动清扫**：在册卡片落盘到 `statePath` 同目录 `running-cards-<appId>.json`，
+  重启后逐张翻成「已中断 · 服务重启」，不再留着假活的卡。
+
+### NFR-3 收尾失败可见
+
+- 终态更新彻底失败时，纯文本兜底前面加 `⚠️ 卡片状态更新失败，以下为最终结果：`，
+  不再静默降级。
+
+### NFR-4 日志落盘
+
+- `lib/log.js` 新增文件落盘：默认 `~/.dsh/logs/feishu-<YYYY-MM-DD>.log`，
+  每行带本地时间（含时区）、级别、来源 `[feishu:<机器人>]`、结构化细节；
+  info/warn/error 无条件写，debug 跟随设置页开关；超 10MB 滚动、保留 3 份。
+- 新增配置 `logDir` / `logMaxBytes`；`createLog(ctx, debug, { dir, maxBytes })`。
+- `log.scope(label)` 取代 index.js 里手写的 `botLog`。
+- 保留 0.7.1 的 `trace` 埋点：重试路径也会 `trace('flush-failed' / 'finish-update-failed')`。
+
+测试 264 → 283（新增 `test/log.test.mjs`、`test/card-registry.test.mjs`，以及心跳 / 建卡竞态 / 收尾重试共 19 例）。
+
 ## 0.7.1
 
 ### 修正：0.7.0 的卡片正文全空（所有轮次，不只唤醒轮）

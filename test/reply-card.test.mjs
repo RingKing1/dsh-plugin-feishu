@@ -433,3 +433,110 @@ test('并发写入串行化：sequence 严格递增，不会出现倒序被飞�
     assert.ok(sequences[index] > sequences[index - 1], 'sequence 必须严格递增：' + sequences.join(','))
   }
 })
+
+// ---- NFR-1 卡片存活感知 / NFR-2 终态兜底 ----
+
+test('建卡竞态：建卡期间到达的工具调用不丢，建好后补一次刷新', async () => {
+  const api = makeApi()
+  let release
+  const gate = new Promise((resolve) => {
+    release = resolve
+  })
+  const create = api.createCard
+  api.createCard = async (card) => {
+    await gate
+    return create(card)
+  }
+  const card = makeCard(api)
+  const starting = card.start()
+  // 建卡还没回来：此时 schedule() 不能把这次变更静默丢掉
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"pnpm build"}' })
+  release()
+  await starting
+  await card.flushNow()
+  const contents = api.calls.filter((call) => call[0] === 'putCardContent').map((call) => call[2])
+  assert.equal(contents[contents.length - 1], '⏳ 正在执行 bash pnpm build…')
+})
+
+test('心跳：没有新事件也会定时刷新状态行（已用时长看得见地走字）', async () => {
+  const api = makeApi()
+  api.putCardStatus = async (cardId, content, sequence) => {
+    api.calls.push(['putCardStatus', cardId, content, sequence])
+  }
+  let clock = 0
+  const card = makeCard(api, { now: () => clock, heartbeatMs: 10, retryBaseMs: 0 })
+  await card.start()
+  clock += 5000
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  card.dispose()
+  const lines = api.calls.filter((call) => call[0] === 'putCardStatus').map((call) => call[2])
+  assert.ok(lines.length >= 1, '心跳至少要推一次状态行')
+  assert.match(lines[lines.length - 1], /已用 00:05/)
+})
+
+test('状态行含步号与当前工具；长参数被截断', async () => {
+  const api = makeApi()
+  const card = makeCard(api, { now: () => 0, heartbeatMs: 0 })
+  card.progress.noteStep(2)
+  card.trackToolCall({ callId: 'c1', name: 'bash', arguments: '{"command":"' + 'x'.repeat(200) + '"}' })
+  const line = card.statusLine()
+  assert.match(line, /第 3 步/)
+  assert.match(line, /bash/)
+  assert.ok(line.length < 120, '状态行不能无限长：实际 ' + line.length)
+})
+
+test('收尾写入失败会重试：第 3 次成功就不降级', async () => {
+  const api = makeApi()
+  let attempts = 0
+  api.updateCard = async (cardId, card, sequence) => {
+    attempts += 1
+    if (attempts < 3) throw new Error('timeout')
+    api.calls.push(['updateCard', cardId, card, sequence])
+  }
+  const card = makeCard(api, { retryBaseMs: 0 })
+  await card.start()
+  card.append('最终答案')
+  const ok = await card.finish()
+  assert.equal(ok, true)
+  assert.equal(attempts, 3)
+  assert.equal(api.calls.filter((call) => call[0] === 'sendText').length, 0)
+})
+
+test('收尾彻底失败：纯文本兜底并明说卡片没更新（NFR-3）', async () => {
+  const api = makeApi()
+  api.updateCard = async () => {
+    throw new Error('boom')
+  }
+  const card = makeCard(api, { retryBaseMs: 0 })
+  await card.start()
+  card.append('最终答案')
+  const ok = await card.finish()
+  assert.equal(ok, false)
+  const texts = api.calls.filter((call) => call[0] === 'sendText').map((call) => call[2])
+  assert.ok(texts.length >= 1)
+  assert.match(texts[texts.length - 1], /卡片状态更新失败/)
+  assert.match(texts[texts.length - 1], /最终答案/)
+})
+
+test('isStale：只在超过阈值没有成功写入时为真', async () => {
+  const api = makeApi()
+  let clock = 0
+  const card = makeCard(api, { now: () => clock, heartbeatMs: 0 })
+  await card.start()
+  assert.equal(card.isStale(180000), false)
+  clock += 200000
+  assert.equal(card.isStale(180000), true)
+})
+
+test('forceInterrupt：把假活的卡片翻成已中断并注销在册记录', async () => {
+  const api = makeApi()
+  const closed = []
+  const card = makeCard(api, { now: () => 0, heartbeatMs: 0, onCardClosed: (id) => closed.push(id) })
+  await card.start()
+  const ok = await card.forceInterrupt('卡片长时间没有更新')
+  assert.equal(ok, true)
+  assert.deepEqual(closed, ['card_1'])
+  const updated = api.calls.filter((call) => call[0] === 'updateCard').pop()
+  assert.match(JSON.stringify(updated[2]), /卡片长时间没有更新|已中断/)
+  assert.equal(card.closed, true)
+})
