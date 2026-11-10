@@ -57,3 +57,43 @@ test('AgentPool.listSessions：映射字段、过滤子agent、缺服务时返�
   const empty = new AgentPool({ ctx: { get: () => undefined }, config: {}, store: {}, log: { warn() {}, debug() {} } })
   assert.deepEqual(await empty.listSessions(10), [])
 })
+
+test('/model /effort /permission 都返回卡片而不是文本', async () => {
+  const calls = []
+  const host = {
+    async modelCard(key) {
+      calls.push(['model', key])
+      return { header: { title: { content: '选择模型' } } }
+    },
+    async effortCard(key, arg) {
+      calls.push(['effort', key, arg])
+      return { header: { title: { content: '选择推理强度' } } }
+    },
+    async permissionCard(key) {
+      calls.push(['permission', key])
+      return { header: { title: { content: '选择权限模式' } } }
+    },
+  }
+
+  const model = await executeCommand(host, {}, 'oc_1', { name: 'model', args: '' })
+  assert.equal(model.card.header.title.content, '选择模型')
+  assert.equal(model.reply, undefined)
+
+  const effort = await executeCommand(host, {}, 'oc_1', { name: 'effort', args: 'deepseek-account/flash' })
+  assert.equal(effort.card.header.title.content, '选择推理强度')
+  assert.deepEqual(calls[1], ['effort', 'oc_1', 'deepseek-account/flash'])
+
+  // 别名
+  const reasoning = await executeCommand(host, {}, 'oc_1', { name: 'reasoning', args: '' })
+  assert.ok(reasoning.card)
+  const mode = await executeCommand(host, {}, 'oc_1', { name: 'mode', args: '' })
+  assert.equal(mode.card.header.title.content, '选择权限模式')
+})
+
+test('/status 有权限时多打一行', async () => {
+  const host = {
+    describeStatus: () => ({ sessionId: 'session-1', cwd: '/tmp', status: 'idle', model: 'p/m', permission: 'workspace-write' }),
+  }
+  const result = await executeCommand(host, {}, 'oc_1', { name: 'status', args: '' })
+  assert.match(result.reply, /权限：workspace-write/)
+})

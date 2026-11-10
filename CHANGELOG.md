@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.9.0
+
+飞书里可以自己选模型、推理强度和权限模式了，不用再回网页点。
+
+### /model 与 /effort
+
+- `/model` 发一张卡片：按 provider 分组列出可用模型，当前模型打勾（取自
+  `sessionController.selectionFor(agent)`，与网页端同一个来源）。
+- 点一个**声明了推理强度**的模型，卡片原地换成强度选择（默认 / 各档），
+  一次选完；没声明的模型直接生效。
+- `/effort [provider/model]` 单独选强度，省略参数就用当前模型。
+- 切换走 `sessionController.selectForNextRequest`：与网页端选模型完全同一条路径，
+  写 `model/selection` 事件，重启后仍生效。
+- 模型目录按 provider 缓存 5 分钟（列模型可能要走网络），单个 provider 失败不影响其它。
+
+### /permission
+
+- `/permission`（别名 `/mode`）列出宿主真实的权限预设目录（`permissionPresets.catalog()`）：
+  只读 / 工作区读写 / 完全权限，自动带出宿主配的名称与说明。
+- 点击即 `preset.set(session, name)`：立刻改这条会话的沙箱与审批开关，下一轮工具调用生效。
+- 只影响当前飞书会话，网页端会话不受影响。
+
+### 其它
+
+- `/status` 现在报真实模型（`provider/model · 强度`）与权限模式。
+- 命令面板同步 `/model` `/effort` `/permission`。
+- 新增单测 17 条（settings-card / session-settings / 命令卡片），全套 315 条通过。
+
 ## 0.8.0
 
 两个能力补齐：DSH 的工具授权搬到飞书，以及把飞书会话绑定到已存在的 dsh 会话。
