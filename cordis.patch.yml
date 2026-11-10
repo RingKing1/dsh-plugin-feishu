@@ -24,6 +24,10 @@
         streamIntervalMs: 700
         # 单张卡片正文上限，超出截断并提示
         maxReplyChars: 8000
+        # 工具授权是否搬到飞书：true = 发「允许一次 / 拒绝」卡片；false = 只在网页弹
+        approvalInFeishu: true
+        # 授权等多久（毫秒）：超时后请求转回 DSH 网页，不会把这一轮一直挂住
+        approvalTimeoutMs: 600000
         # 会话映射落盘位置；留空 = ~/.dsh/feishu/state.json
         statePath: ''
         debug: false

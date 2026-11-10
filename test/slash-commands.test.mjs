@@ -69,18 +69,21 @@ test('API 未就绪时直接返回失败结果', async () => {
 })
 
 test('分页：has_more + page_token 时继续翻页并合并结果', async () => {
+  // 按命令名取规格，别依赖数组下标（新增命令时下标会变）
+  const news = SLASH_COMMANDS.find((item) => item.command === 'new')
+  const stops = SLASH_COMMANDS.find((item) => item.command === 'stop')
   const api = {
     calls: [],
     async request(method, path) {
       this.calls.push([method, path])
       if (method !== 'GET') return { data: {} }
       if (!path.includes('page_token=')) {
-        return { data: { items: [{ command_id: 'a', command: 'new', description: { default_value: SLASH_COMMANDS[0].zh, i18n: { zh_cn: SLASH_COMMANDS[0].zh, en_us: SLASH_COMMANDS[0].en } } }], has_more: true, page_token: 'p2' } }
+        return { data: { items: [{ command_id: 'a', command: 'new', description: { default_value: news.zh, i18n: { zh_cn: news.zh, en_us: news.en } } }], has_more: true, page_token: 'p2' } }
       }
-      return { data: { items: [{ command_id: 'b', command: 'stop', description: { default_value: SLASH_COMMANDS[1].zh, i18n: { zh_cn: SLASH_COMMANDS[1].zh, en_us: SLASH_COMMANDS[1].en } } }], has_more: false } }
+      return { data: { items: [{ command_id: 'b', command: 'stop', description: { default_value: stops.zh, i18n: { zh_cn: stops.zh, en_us: stops.en } } }], has_more: false } }
     },
   }
-  const result = await syncSlashCommands(api, { commands: SLASH_COMMANDS.slice(0, 2) })
+  const result = await syncSlashCommands(api, { commands: [news, stops] })
   assert.equal(result.ok, true)
   assert.deepEqual(result.skipped, ['new', 'stop'])
   assert.equal(api.calls.length, 2)

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.8.0
+
+两个能力补齐：DSH 的工具授权搬到飞书，以及把飞书会话绑定到已存在的 dsh 会话。
+
+### 工具授权卡片（approval/request）
+
+- **接 `approval/request` waterfall**（`prepend`）：本插件会话的工具需要授权时，
+  发一张「允许一次 / 拒绝」卡片到飞书，点完这一轮直接继续，不再等网页弹窗。
+- **一个会话同时只等一个授权**；已有授权在等时，新的请求直接交给下一个 answerer。
+- **请求只放行一次**：按钮回的是 `allowed-once` / `rejected`，不存在永久放行。
+- **超时/发卡失败 = 交回网页**：任何没拿到决定的路径都 `next()`，让网页 answerer 接手，
+  不会把这一轮按 `unavailable` 直接判失败。
+- **/stop、/new、插件停止**都会取消等待中的授权，不留悬空 Promise。
+- 新增配置：`approvalInFeishu`（默认 `true`）、`approvalTimeoutMs`（默认 10 分钟），
+  插件页「审批」分组可直接改。
+
+### /bind 与 /resume
+
+- `/bind`（无参数）列最近 10 条 dsh 会话：序号、会话 id 尾号、目录名、时间、是否运行中。
+- `/bind <序号|会话id>`：写映射并立刻解析一次 —— 宿主里活着的会话直接借用，
+  已落盘的恢复，都不行才新建；`/resume` 是它的别名。
+- 只改映射、不动其它会话：网页端正在跑的会话不会被中断。
+- 实现用 `ctx.sessionQuery.listSessions()` 的 live-preferred 语料，与网页端看到的范围一致；
+  子agent 会话不进列表。
+
+### 其它
+
+- 新增单测：`approval-card`、`tool-approvals`、`bind`（共 27 条），全套 298 条通过。
+
 ## 0.7.2
 
 按 `feishu-feature-report.md` 的 P0 修「卡片假活」：一张卡建好就再也不动，进程崩了也没人管。

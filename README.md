@@ -15,10 +15,12 @@
 | 会话保持 | 飞书会话 ↔ DSH 会话映射落盘，DSH 重启后接着聊；网页端正开着的同一条会话会被直接复用（真恢复不了才新建） |
 | 消息串行 | 同一会话连发多条按顺序处理，不会两条消息抢同一个轮次 |
 | 权限白名单 | 只认指定 open_id；留空则谁都能用（建议自用场景也配一下） |
-| 斜杠命令 | `/new` `/stop` `/status` `/cwd` `/whoami` `/help`，不进模型上下文 |
+| 斜杠命令 | `/new` `/bind` `/resume` `/stop` `/status` `/cwd` `/whoami` `/help`，不进模型上下文 |
 | 提问人身份 | 每条消息首行带 `【飞书 · 群聊|单聊 · 张三(90abcdef)】`，模型一眼看到是谁、从哪来；详细字段走 `feishu_identity` 工具 |
 | 飞书工具 | 只在飞书发起的轮次里可见：`feishu_identity`（查提问人）、`feishu_send`（主动补发一条文本）、`feishu_learn_approval_submit` / `feishu_learn_approval_status`（建审批单 / 查审批状态） |
 | 选择题 | 模型用 `ask_user_question` 提问时，问题以卡片发到飞书：点按钮即答，也可以在卡片输入框自由输入（最多 200 字），或直接回文字 |
+| 工具授权 | DSH 的工具需要授权时，发一张「允许一次 / 拒绝」卡片到飞书；点完这一轮直接继续，不用回网页。超时未点则转回网页，不会一直挂住 |
+| 绑定已有会话 | `/bind` 列最近 10 条 dsh 会话，`/bind <序号\|会话id>` 把当前飞书对话接到其中一条（`/resume` 同义）；活着的会话直接复用，落盘的恢复 |
 | 飞书审批 | 模型调用飞书审批应用建单、用实例号查状态：典型用法是 `/learn` 进化前拿到 `APPROVED` 再动文件；审批定义号在插件页「审批」分组配置 |
 | 执行过程 | 工具调用在卡片顶部的「执行过程」折叠面板里逐条显示：正在跑哪一步、成没成、耗时多少 —— 长任务不再是黑箱 |
 | 子agent 唤醒轮 | 子agent 异步跑完把主 agent 叫醒时，这一轮的回复同样回传飞书：新开一张「子agent 回来了 · <id 前 6 位>」卡，执行过程面板照常；网页端轮次不受影响 |
@@ -195,6 +197,8 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
 | `resolveSenderName` | `true` | 是否调通讯录接口把提问人姓名放进消息首行（需要 `contact:user.base:readonly` 权限；没权限时自动退化成 open_id 尾号）。每个提问人 10 分钟内只查一次；关掉可省这次请求 |
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
+| `approvalInFeishu` | `true` | 工具授权是否搬到飞书：`true` 发「允许一次 / 拒绝」卡片，`false` 保持旧行为只在网页弹 |
+| `approvalTimeoutMs` | `600000` | 飞书里等授权多久（毫秒，10 秒 ~ 24 小时）；超时后请求转回 DSH 网页 |
 | `approvalCode` | 空（未配置） | 飞书审批定义号（`approval_code`）：模型调用提交工具时用它建单。留空 = 未配置，工具明确返回失败，不发空请求 |
 | `approvalWidgetId` | 空（自动） | 审批表单里接收正文的控件 id；留空 = 自动挑（多行文本优先，其次单行文本）。审批定义有多个控件、自动挑错时才填 |
 | `debug` | `false` | 输出调试日志（含去重、忽略原因）；同时决定 debug 级是否落盘 |
@@ -237,9 +241,11 @@ dsh --profile web          # 启动后日志里应看到：feishu: 飞书长连�
 | `/stop` | 中断当前这一轮（等价于 `agent.cancel`） |
 | `/status` | 会话 ID、工作目录、运行状态、模型 |
 | `/cwd <目录>` | 记录本会话的工作目录，对下一次 `/new` 生效 |
+| `/bind [序号\|会话id]` | 绑定到一条已存在的 dsh 会话；不带参数列出最近 10 条 |
+| `/resume` | `/bind` 的别名 |
 | `/whoami` | 回显你的 `open_id` / `chat_id`（配白名单用） |
 
-插件启动时会把这 6 条同步到**飞书输入框的「/」指令面板**（`application/v7/app_slash_commands`，
+插件启动时会把这些命令同步到**飞书输入框的「/」指令面板**（`application/v7/app_slash_commands`，
 幂等：缺的建、描述变了才改、其余跳过）。这一步需要应用有 `application:app_slash_command:write` 权限
 （扫码建的应用已自动预填）；没有权限或版本没发布时只记一条警告，命令仍可手打，不影响收发消息。
 
