@@ -40,3 +40,18 @@ test('非字符串正文会被转成字符串', () => {
   const message = createUserMessage(42)
   assert.equal(message.content[0].text, '42')
 })
+
+test('identity: false 时不写来源首行，正文保持原样', () => {
+  const message = createUserMessage('帮我看下这个报错', { chatType: 'p2p', openId: 'ou_1234567890abcdef', senderName: '张三' }, { identity: false })
+  assert.equal(message.content[0].text, '帮我看下这个报错')
+  // 不加首行也不能把 source 弄丢
+  assert.deepEqual(message.source, { kind: 'user' })
+})
+
+test('identity 缺省 / true 时仍然带来源首行', () => {
+  const meta = { chatType: 'p2p', openId: 'ou_1234567890abcdef', senderName: '张三' }
+  const withDefault = createUserMessage('嗯', meta)
+  const withTrue = createUserMessage('嗯', meta, { identity: true })
+  assert.match(withDefault.content[0].text, /^【飞书 · 单聊 · 张三\(90abcdef\)】/)
+  assert.equal(withTrue.content[0].text, withDefault.content[0].text)
+})

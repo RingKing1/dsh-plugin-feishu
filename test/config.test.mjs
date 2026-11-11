@@ -102,6 +102,10 @@ test('姓名解析默认关闭，只有显式 true 才开', () => {
   // 默认开启：权限没开时 resolveSenderName() 自己退化成 open_id 尾号，不报错
   assert.equal(resolveConfig({ appId: 'a', appSecret: 'b' }, {}).resolveSenderName, true)
   assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: false }, {}).resolveSenderName, false)
+
+  // 来源首行（【飞书 · 单聊 · 张三】）默认写；显式 false 才关
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b' }, {}).identityHeader, true)
+  assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', identityHeader: false }, {}).identityHeader, false)
   assert.equal(resolveConfig({ appId: 'a', appSecret: 'b', resolveSenderName: true }, {}).resolveSenderName, true)
 })
 

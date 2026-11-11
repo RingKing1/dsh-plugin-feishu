@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1
+
+消息首行的来源标记可以关掉了。
+
+- 新配置 `identityHeader`（默认 `true`，插件页「高级」分组）：`false` 时正文就是用户原话，
+  不再写 `【飞书 · 单聊 · 张三(1a2b3c4d)】` 这一类首行。
+- 关掉不影响身份识别：模型仍可调 `feishu_identity` 工具拿完整 open_id / chat_id。
+- 新增 3 条单测（user-message 的 identity 开关、config 默认值），全套 317 条通过。
+
 ## 0.9.0
 
 飞书里可以自己选模型、推理强度和权限模式了，不用再回网页点。

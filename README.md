@@ -199,6 +199,7 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
 | `resolveSenderName` | `true` | 是否调通讯录接口把提问人姓名放进消息首行（需要 `contact:user.base:readonly` 权限；没权限时自动退化成 open_id 尾号）。每个提问人 10 分钟内只查一次；关掉可省这次请求 |
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
+| `identityHeader` | `true` | 消息首行是否写 `【飞书 · 单聊 · 张三(1a2b3c4d)】`；关掉后正文只保留用户原话，身份仍可用 `feishu_identity` 查 |
 | `approvalInFeishu` | `true` | 工具授权是否搬到飞书：`true` 发「允许一次 / 拒绝」卡片，`false` 保持旧行为只在网页弹 |
 | `approvalTimeoutMs` | `600000` | 飞书里等授权多久（毫秒，10 秒 ~ 24 小时）；超时后请求转回 DSH 网页 |
 | `approvalCode` | 空（未配置） | 飞书审批定义号（`approval_code`）：模型调用提交工具时用它建单。留空 = 未配置，工具明确返回失败，不发空请求 |
