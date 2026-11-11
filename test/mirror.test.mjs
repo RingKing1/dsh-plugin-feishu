@@ -122,3 +122,13 @@ test('并发会话上限：超过 MAX_SESSIONS 的第十个会话被跳过', asy
   await tick()
   assert.equal(api.sent.length, 4, '最多同时镜像 4 个会话')
 })
+
+test('boundKeyOf：从持久化映射反查绑定的 chat（Map 与普通对象都支持）', async () => {
+  const { boundKeyOf } = await import('../lib/mirror.js')
+  const map = new Map([['oc_a', { sessionId: 'session-1' }], ['oc_b', { sessionId: 'session-2' }]])
+  assert.equal(boundKeyOf(map, 'session-2'), 'oc_b')
+  assert.equal(boundKeyOf(map, 'session-9'), undefined)
+  assert.equal(boundKeyOf({ 'oc_c': { sessionId: 'session-3' } }, 'session-3'), 'oc_c')
+  assert.equal(boundKeyOf(undefined, 'session-3'), undefined)
+  assert.equal(boundKeyOf(map, ''), undefined)
+})

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.4
+
+修镜像在「宿主刚重启」时不推卡。
+
+- **根因**：`mirrorTarget()` 只用 `keyOfSession()`（活着的 agent）判断会话是否绑定飞书。
+  宿主重启后 `agents.live` 是空的，而持久化映射一直有 —— 于是 `mirrorScope=bound` 时
+  网页端发起的轮次被静默跳过，手机上什么都看不到。0.10.3 现场就是这样：11:42 重启、
+  11:44 飞书才来第一条消息建立 agent，中间那次网页端轮次没推卡。
+- **修法**：先查活 agent，再回落到 `store.sessions`（key → sessionId 的持久化映射），
+  抽出纯函数 `boundKeyOf()` 并单测；跳过时补一条 debug 日志，下次定位不用猜。
+- 全套 335 条通过。
+
 ## 0.10.3
 
 修一个「配置填了但不生效」的静默 bug —— identityHeader / mirrorOtherTurns 这些新配置项一直没到运行时。
