@@ -26,6 +26,12 @@
         maxReplyChars: 8000
         # 消息首行的来源标记（【飞书 · 单聊 · 张三】）：false = 不写进会话正文
         identityHeader: true
+        # 网页端轮次也推飞书（只读卡，不给按钮）；默认关，避免电脑前干活被刷屏
+        mirrorOtherTurns: false
+        # bound = 只镜像已绑定飞书会话上的轮次；all = 所有会话
+        mirrorScope: bound
+        # scope=all 时发往的 chat_id；留空 = 最近一次对话的会话
+        mirrorChatId: ''
         # 工具授权是否搬到飞书：true = 发「允许一次 / 拒绝」卡片；false = 只在网页弹
         approvalInFeishu: true
         # 授权等多久（毫秒）：超时后请求转回 DSH 网页，不会把这一轮一直挂住

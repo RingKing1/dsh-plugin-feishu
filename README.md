@@ -22,6 +22,7 @@
 | 工具授权 | DSH 的工具需要授权时，发一张「允许一次 / 拒绝」卡片到飞书；点完这一轮直接继续，不用回网页。超时未点则转回网页，不会一直挂住 |
 | 模型与推理强度 | `/model` 卡片按 provider 列模型（当前项打勾），点带推理强度的模型会接着让你选强度；`/effort` 单独换强度。走 `sessionController`，与网页端选模型同一条路径，重启后仍生效 |
 | 权限模式 | `/permission` 卡片列出宿主的权限预设（只读 / 工作区读写 / 完全权限），点一下立刻改这条会话的沙箱与审批开关，网页端会话不受影响 |
+| 网页端镜像 | `mirrorOtherTurns=true` 时，在电脑上（Web GUI / CLI）发起的轮次也推一张**只读**卡到飞书：执行过程 + 结论，没有按钮。`mirrorScope=bound` 只镜像已绑定会话，`all` 镜像全部（发往 `mirrorChatId`） |
 | 绑定已有会话 | `/bind` 列最近 10 条 dsh 会话，`/bind <序号\|会话id>` 把当前飞书对话接到其中一条（`/resume` 同义）；活着的会话直接复用，落盘的恢复 |
 | 飞书审批 | 模型调用飞书审批应用建单、用实例号查状态：典型用法是 `/learn` 进化前拿到 `APPROVED` 再动文件；审批定义号在插件页「审批」分组配置 |
 | 执行过程 | 工具调用在卡片顶部的「执行过程」折叠面板里逐条显示：正在跑哪一步、成没成、耗时多少 —— 长任务不再是黑箱 |
@@ -199,6 +200,9 @@ export DSH_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
 | `statePath` | `~/.dsh/feishu/state.json` | 会话映射落盘位置 |
 | `resolveSenderName` | `true` | 是否调通讯录接口把提问人姓名放进消息首行（需要 `contact:user.base:readonly` 权限；没权限时自动退化成 open_id 尾号）。每个提问人 10 分钟内只查一次；关掉可省这次请求 |
 | `askTimeoutMs` | `600000` | 选择题在飞书里等多久（毫秒，10 秒 ~ 24 小时）；超时按「没回答」结束这次提问 |
+| `mirrorOtherTurns` | `false` | 网页端轮次也推飞书（只读卡，不给按钮）；默认关，避免电脑前干活被刷屏 |
+| `mirrorScope` | `bound` | `bound` 只镜像已绑定飞书会话上的轮次；`all` 镜像所有会话 |
+| `mirrorChatId` | 空 | `scope=all` 时发往的 chat_id；留空 = 最近一次对话的会话 |
 | `identityHeader` | `true` | 消息首行是否写 `【飞书 · 单聊 · 张三(1a2b3c4d)】`；关掉后正文只保留用户原话，身份仍可用 `feishu_identity` 查 |
 | `approvalInFeishu` | `true` | 工具授权是否搬到飞书：`true` 发「允许一次 / 拒绝」卡片，`false` 保持旧行为只在网页弹 |
 | `approvalTimeoutMs` | `600000` | 飞书里等授权多久（毫秒，10 秒 ~ 24 小时）；超时后请求转回 DSH 网页 |
