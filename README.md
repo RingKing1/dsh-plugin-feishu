@@ -248,7 +248,7 @@ dsh --profile web          # 启动后日志里应看到：feishu: 飞书长连�
 | `/stop` | 中断当前这一轮（等价于 `agent.cancel`） |
 | `/status` | 会话 ID、工作目录、运行状态、模型（`provider/model · 强度`）与权限模式 |
 | `/cwd <目录>` | 记录本会话的工作目录，对下一次 `/new` 生效 |
-| `/bind [序号\|会话id]` | 绑定到一条已存在的 dsh 会话；不带参数列出最近 10 条 |
+| `/bind [序号\|会话id\|标题]` | 绑定到一条已存在的 dsh 会话；不带参数列出最近 10 条（带会话标题） |
 | `/resume` | `/bind` 的别名 |
 | `/model` | 选择模型（卡片；有推理强度的模型会接着让你选强度） |
 | `/effort [provider/model]` | 选择推理强度；省略模型 = 当前模型（`/reasoning` 同义） |

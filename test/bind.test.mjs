@@ -50,7 +50,7 @@ test('AgentPool.listSessions：映射字段、过滤子agent、缺服务时返�
 
   const list = await pool.listSessions(10)
   assert.equal(list.length, 2, '子agent 会话不应出现')
-  assert.deepEqual(list[0], { id: 'session-a', cwd: '/home/me/proj', createdAt: 1700000000000, live: true })
+  assert.deepEqual(list[0], { id: 'session-a', cwd: '/home/me/proj', createdAt: 1700000000000, live: true, title: '' })
   assert.equal(list[1].id, 'session-b')
   assert.equal(list[1].cwd, '')
 
@@ -96,4 +96,35 @@ test('/status 有权限时多打一行', async () => {
   }
   const result = await executeCommand(host, {}, 'oc_1', { name: 'status', args: '' })
   assert.match(result.reply, /权限：workspace-write/)
+})
+
+test('listSessions：标题按 sessionQuery.readTitleSnapshots 回填，失败不影响列表', async () => {
+  const records = [
+    { header: { id: 'session-a', cwd: '/home/me/proj', createdAt: 1700000000000 }, live: false },
+    { header: { id: 'session-b', cwd: '/home/me/proj', createdAt: 1699999998000 }, live: false },
+  ]
+  const ctx = {
+    get: (name) => {
+      if (name !== 'sessionQuery') return undefined
+      return {
+        listSessions: async () => records,
+        readTitleSnapshots: async (ids) => [
+          { sessionId: ids[0], status: 'fulfilled', value: { title: { title: '修 CI 流水线' } } },
+          { sessionId: ids[1], status: 'rejected', reason: new Error('gone') },
+        ],
+      }
+    },
+  }
+  const pool = new AgentPool({ ctx, config: {}, store: {}, log: { warn() {}, debug() {} } })
+  const list = await pool.listSessions(10)
+  assert.equal(list[0].title, '修 CI 流水线')
+  assert.equal(list[1].title, '')
+})
+
+test('listSessions：没有 readTitleSnapshots 时标题为空串，不抛错', async () => {
+  const records = [{ header: { id: 'session-a', cwd: '', createdAt: 1 }, live: true }]
+  const ctx = { get: () => ({ listSessions: async () => records }) }
+  const pool = new AgentPool({ ctx, config: {}, store: {}, log: { warn() {}, debug() {} } })
+  const list = await pool.listSessions(5)
+  assert.deepEqual(list[0].title, '')
 })
