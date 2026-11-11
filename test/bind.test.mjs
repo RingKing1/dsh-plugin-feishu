@@ -128,3 +128,27 @@ test('listSessions：没有 readTitleSnapshots 时标题为空串，不抛错', 
   const list = await pool.listSessions(5)
   assert.deepEqual(list[0].title, '')
 })
+
+test('listSessions(titledOnly)：只保留有标题的会话，且取够数量', async () => {
+  const records = [
+    { header: { id: 'a', cwd: '/p', createdAt: 5 }, live: false },
+    { header: { id: 'b', cwd: '/p', createdAt: 4 }, live: false },
+    { header: { id: 'c', cwd: '/p', createdAt: 3 }, live: false },
+  ]
+  const ctx = {
+    get: () => ({
+      listSessions: async () => records,
+      readTitleSnapshots: async (ids) =>
+        ids.map((id) => ({
+          sessionId: id,
+          status: 'fulfilled',
+          value: id === 'b' ? {} : { title: { title: '标题-' + id } },
+        })),
+    }),
+  }
+  const pool = new AgentPool({ ctx, config: {}, store: {}, log: { warn() {}, debug() {} } })
+  const all = await pool.listSessions(10)
+  assert.equal(all.length, 3, '默认不过滤')
+  const titled = await pool.listSessions(10, { titledOnly: true })
+  assert.deepEqual(titled.map((item) => item.id), ['a', 'c'])
+})
