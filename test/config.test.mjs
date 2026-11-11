@@ -126,3 +126,33 @@ test('飞书审批定义默认未配置；填了去首尾空白', () => {
   assert.equal(configured.approvalCode, 'C123')
   assert.equal(configured.approvalWidgetId, 'widget_1')
 })
+
+test('SNAPSHOT_FIELDS 覆盖 resolveConfig 的每个字段（漏一个就是「填了不生效」）', async () => {
+  const { SNAPSHOT_FIELDS, resolveConfig } = await import('../lib/config.js')
+  const keys = new Set(SNAPSHOT_FIELDS.map(([key]) => key))
+  const resolved = resolveConfig({ appId: 'a', appSecret: 'b' }, {})
+  // enabled / missing 是派生结果，bots 由入口单独读
+  const derived = new Set(['enabled', 'missing'])
+  const missing = Object.keys(resolved).filter((key) => !derived.has(key) && !keys.has(key))
+  assert.deepEqual(missing, [], '这些字段没进快照表：' + missing.join(', '))
+})
+
+test('快照里的值与 resolveConfig 的默认值一致（两边漂移会让默认值互相打架）', async () => {
+  const { SNAPSHOT_FIELDS, resolveConfig } = await import('../lib/config.js')
+  const resolved = resolveConfig({ appId: 'a', appSecret: 'b' }, {})
+  for (const [key, fallback] of SNAPSHOT_FIELDS) {
+    if (key === 'domain' || key === 'workdir' || key === 'statePath' || key === 'appId' || key === 'appSecret') continue
+    assert.deepEqual(resolved[key], fallback, key + ' 的默认值与快照表不一致')
+  }
+})
+
+test('volatile 引用（带 .get()）也能被解引用', () => {
+  const ref = (value) => ({ get: () => value })
+  const config = resolveConfig(
+    { appId: 'a', appSecret: 'b', identityHeader: ref(false), mirrorOtherTurns: ref(true), mirrorScope: ref('all') },
+    {},
+  )
+  assert.equal(config.identityHeader, false)
+  assert.equal(config.mirrorOtherTurns, true)
+  assert.equal(config.mirrorScope, 'all')
+})

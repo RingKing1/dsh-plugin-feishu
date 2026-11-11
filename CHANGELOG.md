@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.3
+
+修一个「配置填了但不生效」的静默 bug —— identityHeader / mirrorOtherTurns 这些新配置项一直没到运行时。
+
+- **根因**：插件入口的 `readAll()` 是一份手写的 volatile 字段快照，只列了当时存在的字段。
+  新增的 `identityHeader`、`mirrorOtherTurns`、`mirrorScope`、`mirrorChatId`、`approvalInFeishu`、
+  `approvalTimeoutMs`、`showReasoning`、`replyBodyMode` 都不在快照里 —— 传给 `resolveConfig`
+  的永远是 `undefined`，于是全部回落成默认值（identityHeader=true、mirror=false）。
+- **修法**：字段清单挪到 `lib/config.js` 的 `SNAPSHOT_FIELDS`，入口按表逐项读取；
+  单测断言「resolveConfig 的每个字段都在表里」+「表里的默认值与 resolveConfig 一致」，
+  以后新增字段漏加会直接测试失败。
+- 顺带让 `resolveConfig` 统一用 `readField` 解引用（volatile 字段是 `{ get() }` 引用，
+  直接 `!== false` 比较永远为真），加了对应单测。
+- 全套 334 条通过。
+
 ## 0.10.2
 
 `/bind` 列表不再被空会话占位。
